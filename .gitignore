@@ -1,11 +1,90 @@
+# ====================
+# XTDrone .gitignore
+# ====================
+
+# --- Papers & Competition ---
 papers
 competition
 project
+
+# --- ROS / ROS2 Build ---
+build/
+devel/
+install/
+logs/
+log/
 *.bag
-*.pyc
 *.pbstream
+.catkin_workspace
+catkin_workspace/
+.catkin_tools/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+.eggs/
+dist/
+*.whl
+*.so
+
+# --- C / C++ ---
+*.o
+*.obj
+*.a
+*.out
+*.bin
+*.la
+
+# --- CMake ---
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+*.cmake
+
+# --- Archives (should not be in repo) ---
+*.zip
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tgz
+*.rar
+*.7z
+
+# --- Editor & IDE ---
+.vscode/
+.idea/
+.gitee/
+*.swp
+*.swo
+*.swm
+*.swn
+*~
+.*.swp
+.*.swo
+# Editor backups
+*.orig
+*.bak
+
+# --- OS ---
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*$*
+
+# --- Project-specific data files ---
 sensing/slam/vio/VINS-Fusion/camera_models/camera_calib_example
-.gitee
-.vscode
-.idea
 sensing/slam/vslam/evaluate
+
+# --- Large model/vocabulary files ---
+sensing/slam/vslam/ORB_SLAM2/Vocabulary/
+sensing/slam/vslam/ORB_SLAM3/Vocabulary/
+
+# --- Specific build dirs (already tracked, now ignored) ---
+coordination/fixed_wing_formation_control/build/
