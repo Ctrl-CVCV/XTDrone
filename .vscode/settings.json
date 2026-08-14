@@ -1,0 +1,4 @@
+{
+    "ROS2.distro": "noetic",
+    "github.copilot.chat.codeGeneration.useInstructionFiles": true
+}
