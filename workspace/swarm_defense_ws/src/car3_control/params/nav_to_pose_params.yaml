@@ -1,0 +1,63 @@
+# Phase 6: three-phase nav_to_pose (ALIGN -> TRANSLATE -> ROTATE_YAW)
+# Heading changes happen ONLY in the two rotation phases; the translation
+# phase commands vth = 0 and avoids obstacles purely by strafing.
+# Head-on obstacles trigger a lateral escape (right first) instead of a stop.
+
+max_vel_trans: 0.7
+max_vel_theta: 0.8
+acc_lim_trans: 0.6
+acc_lim_theta: 2.0
+
+kp_rot: 2.5        # yaw error (rad) -> angular velocity
+kp_trans: 1.2      # distance to goal (m) -> speed
+slow_radius: 0.6   # slow down linearly inside this radius
+
+# phase 1: heading == bearing to goal (band hysteresis: stop within the
+# narrow bound, restart only beyond the wide bound; bounds are wider than
+# AMCL's yaw noise ~0.1 rad so the robot doesn't wiggle at the settle point)
+align_tolerance: 0.08
+align_start_tolerance: 0.25
+
+# phase 3: enter within goal_radius, only go back to translation if the
+# robot drifts beyond goal_radius_exit -> no position dithering at the goal
+goal_radius: 0.18
+goal_radius_exit: 0.35
+
+# phase 3 yaw band hysteresis
+goal_yaw_tolerance: 0.08
+goal_yaw_start_tolerance: 0.25
+
+settled_cycles: 5  # consecutive in-tolerance cycles before switching phase
+
+scan_topic: /scan
+repulse_range: 0.6     # obstacles closer than this push the robot away
+repulse_gain: 0.8      # fraction of max_vel_trans used for repulsion
+# head-on escape: obstacle within +/-escape_angle (rad, 0.3927 = 22.5 deg,
+# 45 deg total cone) of forward and closer than escape_range -> strafe
+# sideways (right first), heading unchanged. During the escape the
+# along-heading position is held (vx = 0): the front obstacle's repulsion
+# cannot push the robot back out to the resume range and fake a clear, so
+# the cone only clears by genuinely strafing past the obstacle. The escape
+# ends when the forward cone is clear out to escape_resume_clear (short
+# resume margin, larger than escape_range so the same obstacle cannot
+# re-trigger right away; a long look-ahead like 2.5 m would never clear
+# inside a small room whose walls are always in sight) AND the lateral
+# headway since the escape start is at least escape_min_progress -- or, as
+# a safety net, if the cone is clear while the right escape is stuck/timed
+# out (front is drivable, so never switch direction). Switch to the left
+# only while the cone is still blocked and the lateral headway over the
+# last escape_stuck_time is below escape_min_progress (window comparison,
+# so wall-bounce limit cycles also count as stuck), or after escape_max_time
+# even with headway (e.g. sliding along a long wall).
+escape_angle: 0.3927
+escape_range: 0.30
+escape_resume_clear: 0.6
+escape_speed: 0.25
+escape_stuck_time: 3.0
+escape_max_time: 8.0
+escape_min_progress: 0.08
+
+stall_time: 20.0
+stall_min_progress: 0.08
+
+rate: 20.0

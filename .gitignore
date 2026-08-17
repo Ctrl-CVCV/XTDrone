@@ -1,0 +1,14 @@
+# ROS/catkin 编译产物
+build/
+devel/
+install/
+logs/
+.catkin_tools/
+
+# Python
+__pycache__/
+*.pyc
+
+# 日志与临时文件
+*.log
+.DS_Store

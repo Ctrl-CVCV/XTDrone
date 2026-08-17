@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <arg name="gui" default="false"/>
+    <arg name="x" default="0.0"/>
+    <arg name="y" default="0.0"/>
+    <arg name="z" default="0.01"/>
+    <arg name="world_launch" default="basic_room"/>
+
+    <!-- Gazebo world (basic_room or 6_6_room) -->
+    <include file="$(find basic_room_sim)/launch/$(arg world_launch).launch">
+        <arg name="gui" value="$(arg gui)"/>
+    </include>
+
+    <!-- car3 model -->
+    <param name="robot_description" textfile="$(find car3)/urdf/car3.urdf"/>
+
+    <!-- must be on the param server before spawn: gazebo_ros_control
+         reads pid_gains while initializing the robot simulation interface -->
+    <rosparam file="$(find car3_control)/config/gazebo_pid.yaml" command="load"/>
+
+    <node name="spawn_car3" pkg="gazebo_ros" type="spawn_model"
+          args="-x $(arg x) -y $(arg y) -z $(arg z) -param robot_description -urdf -model car3"
+          output="screen"/>
+
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+        <param name="publish_frequency" value="50.0"/>
+    </node>
+
+    <!-- ros_control + mecanum cmd_vel -->
+    <include file="$(find car3_control)/launch/car3_control.launch"/>
+
+    <!-- Phase 3: gazebo ground truth -> /odom + odom->base_footprint TF -->
+    <node name="ground_truth_odom" pkg="car3_control" type="ground_truth_odom_node"
+          output="screen"/>
+</launch>

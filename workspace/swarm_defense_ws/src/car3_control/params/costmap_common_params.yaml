@@ -1,0 +1,25 @@
+# shared by global_costmap and local_costmap
+# car3 body mesh: x[-0.164, 0.189] y[-0.119, 0.119]; wheels reach y +-0.155
+footprint: [[0.20, 0.17], [0.20, -0.17], [-0.20, -0.17], [-0.20, 0.17]]
+robot_base_frame: base_footprint
+transform_tolerance: 0.5
+
+update_frequency: 5.0
+publish_frequency: 2.0
+
+obstacle_layer:
+  enabled: true
+  observation_sources: laser
+  laser:
+    data_type: LaserScan
+    topic: /scan
+    marking: true
+    clearing: true
+    obstacle_range: 20.0
+    raytrace_range: 20.0
+    inf_is_valid: false
+
+inflation_layer:
+  enabled: true
+  inflation_radius: 0.3
+  cost_scaling_factor: 4.0

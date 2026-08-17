@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <!-- Phase 6: three-phase nav_to_pose replaces move_base.
+         Goal flow: ALIGN (rotate to bearing) -> TRANSLATE (pure strafing
+         motion, vth=0, obstacles avoided by translation only) ->
+         ROTATE_YAW (within goal_radius, rotate to desired goal yaw).
+         Compatible with RViz [2D Nav Goal] (/move_base_simple/goal) and
+         the /move_base MoveBaseAction interface. -->
+    <arg name="map_file" default="$(find car3_control)/maps/nesting_room.yaml"/>
+    <arg name="init_x" default="0.0"/>
+    <arg name="init_y" default="0.0"/>
+    <arg name="init_a" default="0.0"/>
+    <arg name="gui" default="false"/>
+
+    <!-- sim + ros_control + odom + lidar (nesting_room world, spawn at room center) -->
+    <include file="$(find car3_control)/launch/car3_bringup.launch">
+        <arg name="gui" value="$(arg gui)"/>
+        <arg name="world_launch" value="nesting_room"/>
+        <arg name="x" value="0.0"/>
+        <arg name="y" value="0.0"/>
+    </include>
+
+    <node name="map_server" pkg="map_server" type="map_server"
+          args="$(arg map_file)"/>
+
+    <node name="amcl" pkg="amcl" type="amcl">
+        <rosparam file="$(find car3_control)/params/amcl_params.yaml" command="load"/>
+        <param name="initial_pose_x" value="$(arg init_x)"/>
+        <param name="initial_pose_y" value="$(arg init_y)"/>
+        <param name="initial_pose_a" value="$(arg init_a)"/>
+    </node>
+
+    <node name="nav_to_pose" pkg="car3_control" type="nav_to_pose_node"
+          output="screen">
+        <rosparam file="$(find car3_control)/params/nav_to_pose_params.yaml"
+                  command="load"/>
+    </node>
+</launch>

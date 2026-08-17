@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <!-- load 4 wheel JointVelocityControllers + joint_state_controller -->
+    <rosparam file="$(find car3_control)/config/car3_controllers.yaml" command="load"/>
+
+    <node name="controller_spawner" pkg="controller_manager" type="spawner"
+          args="joint_state_controller
+                wheel_lf_velocity_controller
+                wheel_rf_velocity_controller
+                wheel_lb_velocity_controller
+                wheel_rb_velocity_controller"
+          output="screen"/>
+
+    <!-- /cmd_vel -> 4 wheel velocity commands -->
+    <node name="mecanum_controller_node" pkg="car3_control" type="mecanum_controller_node"
+          output="screen">
+        <param name="wheel_radius" value="0.0489"/>
+        <param name="wheel_base_x_half" value="0.0973"/>
+        <param name="wheel_base_y_half" value="0.1058"/>
+        <param name="sign_fl" value="1.0"/>
+        <param name="sign_fr" value="1.0"/>
+        <param name="sign_rl" value="1.0"/>
+        <param name="sign_rr" value="1.0"/>
+    </node>
+</launch>

@@ -1,0 +1,21 @@
+shutdown_costmaps: false
+
+controller_frequency: 12.0
+planner_frequency: 0.5
+controller_patience: 5.0
+planner_patience: 3.0
+conservative_reset_dist: 3.0
+
+recovery_behavior_enabled: true
+clearing_rotation_allowed: true
+oscillation_timeout: 10.0
+oscillation_distance: 0.3
+
+base_global_planner: "global_planner/GlobalPlanner"
+base_local_planner: "dwa_local_planner/DWAPlannerROS"
+max_planning_retries: 1
+
+GlobalPlanner:
+  use_dijkstra: true
+  use_grid_path: false
+  orientation_mode: 0

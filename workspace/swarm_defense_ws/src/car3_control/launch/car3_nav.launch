@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <!-- Phase 5: map_server + AMCL + move_base (omnidirectional DWA) -->
+    <arg name="map_file" default="$(find car3_control)/maps/nesting_room.yaml"/>
+    <arg name="init_x" default="0.0"/>
+    <arg name="init_y" default="0.0"/>
+    <arg name="init_a" default="0.0"/>
+    <arg name="gui" default="false"/>
+
+    <!-- sim + ros_control + odom + lidar (no SLAM, nesting_room world) -->
+    <include file="$(find car3_control)/launch/car3_bringup.launch">
+        <arg name="gui" value="$(arg gui)"/>
+        <arg name="world_launch" value="nesting_room"/>
+        <arg name="x" value="0.0"/>
+        <arg name="y" value="0.0"/>
+    </include>
+
+    <node name="map_server" pkg="map_server" type="map_server"
+          args="$(arg map_file)"/>
+
+    <node name="amcl" pkg="amcl" type="amcl">
+        <rosparam file="$(find car3_control)/params/amcl_params.yaml" command="load"/>
+        <param name="initial_pose_x" value="$(arg init_x)"/>
+        <param name="initial_pose_y" value="$(arg init_y)"/>
+        <param name="initial_pose_a" value="$(arg init_a)"/>
+    </node>
+
+    <node name="move_base" pkg="move_base" type="move_base" output="screen">
+        <rosparam file="$(find car3_control)/params/costmap_common_params.yaml"
+                  command="load" ns="global_costmap"/>
+        <rosparam file="$(find car3_control)/params/costmap_common_params.yaml"
+                  command="load" ns="local_costmap"/>
+        <rosparam file="$(find car3_control)/params/global_costmap_params.yaml"
+                  command="load"/>
+        <rosparam file="$(find car3_control)/params/local_costmap_params.yaml"
+                  command="load"/>
+        <rosparam file="$(find car3_control)/params/dwa_local_planner_params.yaml"
+                  command="load"/>
+        <rosparam file="$(find car3_control)/params/move_base_params.yaml"
+                  command="load"/>
+    </node>
+</launch>

@@ -1,0 +1,23 @@
+joint_state_controller:
+  type: joint_state_controller/JointStateController
+  publish_rate: 50
+
+wheel_lf_velocity_controller:
+  type: velocity_controllers/JointVelocityController
+  joint: wheel_lf_joint
+  pid: {p: 1.0, i: 0.0, d: 0.0}
+
+wheel_rf_velocity_controller:
+  type: velocity_controllers/JointVelocityController
+  joint: wheel_rf_joint
+  pid: {p: 1.0, i: 0.0, d: 0.0}
+
+wheel_lb_velocity_controller:
+  type: velocity_controllers/JointVelocityController
+  joint: wheel_lb_joint
+  pid: {p: 1.0, i: 0.0, d: 0.0}
+
+wheel_rb_velocity_controller:
+  type: velocity_controllers/JointVelocityController
+  joint: wheel_rb_joint
+  pid: {p: 1.0, i: 0.0, d: 0.0}

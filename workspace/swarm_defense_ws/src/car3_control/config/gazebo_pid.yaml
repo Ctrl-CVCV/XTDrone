@@ -1,0 +1,6 @@
+gazebo_ros_control:
+  pid_gains:
+    wheel_lf_joint: {p: 0.15, i: 0.0, d: 0.00002}
+    wheel_rf_joint: {p: 0.15, i: 0.0, d: 0.00002}
+    wheel_lb_joint: {p: 0.15, i: 0.0, d: 0.00002}
+    wheel_rb_joint: {p: 0.15, i: 0.0, d: 0.00002}
