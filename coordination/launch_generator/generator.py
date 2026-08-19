@@ -103,8 +103,8 @@ with open('multi_vehicle.launch','w') as f:
             
             for id_in_type in range(0,type_num):
 
-                offboard_local=34580+id_in_all
-                offboard_remote=24540+id_in_all
+                offboard_local=14580+id_in_all
+                offboard_remote=14540+id_in_all
                 SITL=18570+id_in_all
                 TCP=4560+id_in_all
                 for line in launch_lines:
