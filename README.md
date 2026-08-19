@@ -217,8 +217,16 @@ docker exec -it xtdrone-dev bash /workspace/mission_demo_right.sh   # 右门 RIG
 所有单点判定均带容差滞回（进入/退出半径不同），避免状态抖动。
 完整设计见 `car3_全链路开发报告.md`。
 
-## 六、演示截图
+## 六、运行示意图
 
-![demo_final](images/demo_final.png)
+**巡检**：car0（NE 角）守 下门→左门、car1（SW 角）守 上门→右门，按规划门序在
+各自驻留点往返摆扫，持续覆盖全部四门，发现入侵立即上报任务状态机。
+
+![巡检示意图](images/巡检示意图.png)
+
+**围捕**：入侵车（car2）从任一门外走廊驶入内区后，任务状态机按角色分配
+（拦截 / 追捕）指挥双车向入侵车夹击，区域封控并完成捕获（result=CAPTURE）。
+
+![围捕示意图](images/围捕示意图.png)
 
 更多截图见 `images/` 目录。
