@@ -1,0 +1,115 @@
+# 一体化任务参数（PATROL -> INTRUSION -> CONTAINMENT -> CAPTURE/ESCAPE）
+# 坐标均为世界系；内墙/门数值取自 basic_room_sim/models/nesting_room/model.sdf 实测
+# （world include 已将模型位姿覆盖为 0，模型局部坐标即世界坐标）。
+
+# 内墙内边包围盒（墙厚 0.15 的净内表面），入侵/逃逸判定用
+inner_region:
+  x_min: -3.091
+  x_max: 2.859
+  y_min: -2.984
+  y_max: 2.966
+
+# 四扇门中心（墙段间隙 1.2m 的中心，SDF 实测）
+gate_positions:
+  UP:    [-0.116, 3.041]
+  DOWN:  [-0.116, -3.059]
+  LEFT:  [-3.166, -0.009]
+  RIGHT: [2.934, -0.009]
+
+# 门中心指向内墙内部的单位法向（门外侧点 = 门中心 - n * approach_offset）
+gate_normals:
+  UP:    [0.0, -1.0]
+  DOWN:  [0.0, 1.0]
+  LEFT:  [1.0, 0.0]
+  RIGHT: [-1.0, 0.0]
+
+gate_half_width: 0.6    # 门宽 1.2m 的一半，越界判定与门归属用
+
+intruder:
+  entry_mode: random      # fixed | random（random 每轮随机换门，排除上一轮入口）
+  entry_gate: LEFT        # entry_mode=fixed 时的固定入口
+  random_seed: 0          # seed>0 可复现每轮选门序列（测试用）；0=时间种子真随机（演示用）
+  escape_mode: auto       # auto | fixed（fixed 仅用于测试）
+  escape_gate: RIGHT
+  approach_offset: 0.9    # 门外侧停车点到门中心距离 (m)
+  spawn_return_dist: 0.5  # 复位后距出生点超过该值即先回归出生点（规范下一轮起点）
+  spawn_arrive_dist: 0.35 # 回归完成判定半径：出生点距北墙仅 0.4m（墙斥力半径 0.6m 内），
+                          # move_base 末段引力-斥力平衡会悬挂在 ~0.2m 处永不成功；
+                          # 到达邻域即视作复位完成（0.35m 足够规范下一轮起点）
+  # spawn_pose 由 launch 的 car2_x/car2_y 注入（单点真源）；节点默认 [-6.5, 6.6]
+  # 各门接近路径的走廊中转点：E 出生西北走廊，去 RIGHT/DOWN 门时全局规划会抄近路
+  # 穿过内区（门为地图自由空间）→ 半路误触发入侵；中转点强制接近路径全程留在外圈走廊
+  approach_waypoints:
+    UP: []                       # 出生点沿北走廊直行即到，无需中转
+    DOWN: [[3.834, 3.5], [3.834, -3.5]]   # 北走廊→东走廊→南走廊绕行
+    LEFT: [[-4.066, 3.5]]        # 西走廊北段（防抄近路穿 LEFT 门两次）
+    RIGHT: [[3.834, 3.5]]        # 东北角（防抄近路穿 UP+RIGHT 门）
+  # 复位回归出生点的走廊中转点（按驶出/最近门选取）：防回归段全局规划
+  # 抄近路穿内区（穿错门 → 下一轮巡逻期误触发入侵）
+  return_waypoints:
+    UP: []                       # 北走廊直回，无需中转
+    DOWN: [[-4.066, -3.5], [-4.066, 3.5]]   # 南走廊→西走廊→北走廊
+    LEFT: []                     # 西走廊直回，无需中转
+    RIGHT: [[3.834, 3.5], [-4.066, 3.5]]    # 东走廊→北走廊绕行
+  inside_offset: 1.0      # 穿门后内点距门中心距离 (m)
+  cross_speed: 0.35       # 穿门平移速度 (m/s)
+  exit_switch_margin: 0.15   # 换门代价优势阈值 ΔJ
+  exit_switch_hold_time: 0.5  # 优势需持续的时间 T_switch (s)
+  escape_weights:         # J = wd*Jd + wp*Jp + wo*Jo
+    distance: 1.0
+    pursuer: 1.5
+    obstacle: 1.0
+  distance_norm: 8.4      # Jd 归一化参考距离（房间对角线量级, m）
+  pursuer_gate_decay: 1.2 # Jp 门邻近项衰减常数 (m)
+  pursuer_path_decay: 0.9 # Jp 逃逸路径邻近项衰减常数 (m)
+  escape_goal_offset: 0.6 # 逃逸目标点超出门中心沿法向距离 (m)
+  escape_arrive: 0.2      # 逃逸到位判定半径 (m)
+  gate_block_margin: 0.1  # 门方向射线判定被挡的提前量 (m)
+
+containment:
+  forward_offset: 0.35    # V 型封堵前向距离 d_f (m)
+  lateral_offset: 0.35    # 横向展开距离 d_s (m)
+  capture_radius: 0.55    # 捕获半径 R_c (m)
+  capture_hold_time: 0.4  # 捕获条件持续保持时间 T_hold (s)
+  wall_safe_margin: 0.25  # 封堵点距内墙最小距离 (m)
+
+motion:
+  containment_max_vx: 0.60   # 己方围捕最大平移速度 (m/s)
+  containment_max_vy: 0.60
+  intruder_max_vx: 0.35      # 入侵车逃逸最大平移速度 (m/s)（速度公平性：己方略快。
+                             # 实测 0.50 时 E 直线 8.2s 到边界，落在 E 身后的 A 车
+                             # 0.55 上限追不上逃逸中的 E，捕获条件永不成立）
+  intruder_max_vy: 0.35
+  final_align_max_omega: 0.60  # 捕获后转向角速度 (rad/s)
+  final_align_tolerance: 0.05   # ε_ψ 转向到位容差 (rad)
+  kp_track: 1.6              # 目标点跟踪 P 增益
+  repulse_range: 0.20        # 扫描斥力作用半径 (m)，入侵车使用：激光系距离，换算
+                             # 车心距约 +0.25（盒半宽+激光原点偏移）。0.20 使斥力
+                             # 仅在车心距 ~0.45 内触发，小于 V 型封堵点距离 0.495，
+                             # 保证己方到达封堵点时 E 不被推开（否则 E 被斥力甩动、
+                             # 捕获窗口无法保持 0.4s，实测 0.32 时 E 仍以 ±0.5 抖动）
+  repulse_gain: 0.35         # 斥力强度（相对最大速度的比例），入侵车使用（弱斥力：
+                             # 逃逸以换门决策为主，避免被围时高频抖动）
+  defender_repulse_range: 0.20  # 己方车斥力半径（激光系，车心距约 +0.25）：封堵点
+                                # 距 E 0.495，斥力须在车心距 <0.45 才触发，否则己方
+                                # 被推出捕获圆（实测 0.36 时两车稳定悬在 0.55~0.60
+                                # 恰好圈外，捕获窗口只有 0.25s）
+  defender_repulse_gain: 0.5    # 己方车斥力强度：允许进入 R_c 捕获圆
+  cross_yaw_hold_gain: 1.5   # 穿门阶段航向保持增益（仅入侵前允许 ω）
+
+collision:
+  # 虚拟障碍盒：己方之间用正常盒，与入侵车之间用缩小盒（target_safe < friendly_safe，
+  # 允许己方车接近到捕获半径而不发生车模穿透）
+  friendly_box: [0.45, 0.38]
+  target_safe_box: [0.34, 0.30]
+
+fsm:
+  control_rate: 20.0        # 围捕控制/任务判定频率 (Hz)
+  intrusion_debounce: 0.25  # outside→inside 去抖 (s)
+  escape_debounce: 0.25     # inside→outside 去抖 (s)
+  decision_period: 0.5      # 入侵车逃逸出口评分周期 (s)
+  wait_patrol_ready: true   # 入侵车等两车巡检就绪后再出发（Test 3 置 false）
+  intruder_start_delay: 0.0 # 巡逻就绪后附加延迟 (s)
+  auto_intrude: true        # mission start 后自动启动入侵（Test 1 置 false）
+  final_align_delay: 1.0    # CAPTURE_CONFIRMED 全停保持后进入 FINAL_ALIGN (s)
+  final_align_timeout: 15.0 # FINAL_ALIGN 超时 (s)，超时亦进入 SUCCESS

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <!-- patrol mode (巡检模式): the two defender cars only (no map/AMCL/nav —
+         patrol uses odometry). Spawn diagonal corners of the inner room:
+           car0 = Car B (NE upper-right corner): watches 下门 first, then 左门
+           car1 = Car A (SW lower-left corner):  watches 上门 first, then 右门
+         Trigger with `rosrun car3_swarm patrol_ctl.py start` (or the
+         /carN/start_patrol services); stop with patrol_ctl.py stop. -->
+    <arg name="gui" default="true"/>
+    <arg name="car0_x" default="2.3"/>
+    <arg name="car0_y" default="2.4"/>
+    <arg name="car0_yaw" default="-2.334"/>
+    <arg name="car1_x" default="-2.3"/>
+    <arg name="car1_y" default="-2.4"/>
+    <arg name="car1_yaw" default="0.808"/>
+
+    <include file="$(find basic_room_sim)/launch/nesting_room.launch">
+        <arg name="gui" value="$(arg gui)"/>
+    </include>
+
+    <include file="$(find car3_swarm)/launch/car_spawn.launch">
+        <arg name="car" value="car0"/>
+        <arg name="x" value="$(arg car0_x)"/>
+        <arg name="y" value="$(arg car0_y)"/>
+        <arg name="yaw" value="$(arg car0_yaw)"/>
+    </include>
+
+    <include file="$(find car3_swarm)/launch/car_spawn.launch">
+        <arg name="car" value="car1"/>
+        <arg name="x" value="$(arg car1_x)"/>
+        <arg name="y" value="$(arg car1_y)"/>
+        <arg name="yaw" value="$(arg car1_yaw)"/>
+    </include>
+
+    <!-- Car B (car0, NE): 下门 (0,-2.975) first, 左门 (-2.975,0) second -->
+    <group ns="car0">
+        <node name="patrol" pkg="car3_swarm" type="patrol_node.py" output="screen">
+            <param name="forward_distance" value="2.0"/>
+            <param name="patrol_speed" value="0.35"/>
+            <param name="max_omega" value="0.50"/>
+            <param name="angle_tolerance" value="0.052"/>
+            <param name="dwell_time" value="0.4"/>
+            <param name="hold_yaw_gain" value="2.0"/>
+            <param name="rate" value="20.0"/>
+            <rosparam param="doors">[[0.0, -2.975], [-2.975, 0.0]]</rosparam>
+        </node>
+    </group>
+
+    <!-- Car A (car1, SW): 上门 (0,2.975) first, 右门 (2.975,0) second -->
+    <group ns="car1">
+        <node name="patrol" pkg="car3_swarm" type="patrol_node.py" output="screen">
+            <param name="forward_distance" value="2.0"/>
+            <param name="patrol_speed" value="0.35"/>
+            <param name="max_omega" value="0.50"/>
+            <param name="angle_tolerance" value="0.052"/>
+            <param name="dwell_time" value="0.4"/>
+            <param name="hold_yaw_gain" value="2.0"/>
+            <param name="rate" value="20.0"/>
+            <rosparam param="doors">[[0.0, 2.975], [2.975, 0.0]]</rosparam>
+        </node>
+    </group>
+</launch>

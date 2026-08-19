@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <!-- one car3 under /carN: parameterized URDF (prefix carN/, ns /carN),
+         spawn, robot_state_publisher, ros_control + mecanum, ground-truth odom.
+         Same nodes/params as the single-car bringup; only ns/prefix differ. -->
+    <arg name="car"/>   <!-- e.g. car0 -->
+    <arg name="x"/>
+    <arg name="y"/>
+    <arg name="yaw"/>
+
+    <group ns="$(arg car)">
+        <param name="robot_description"
+               command="$(find xacro)/xacro '$(find car3_control)/urdf/car3.xacro'
+                        prefix:=$(arg car)/ ns:=/$(arg car)"/>
+
+        <!-- must be on the param server before spawn (gazebo_ros_control
+             reads pid_gains during robot hw interface init) -->
+        <rosparam file="$(find car3_control)/config/gazebo_pid.yaml" command="load"/>
+
+        <node name="spawn_model" pkg="gazebo_ros" type="spawn_model"
+              args="-x $(arg x) -y $(arg y) -z 0.01 -Y $(arg yaw)
+                    -param robot_description -urdf -model $(arg car)"
+              output="screen"/>
+
+        <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+            <param name="publish_frequency" value="50.0"/>
+        </node>
+
+        <rosparam file="$(find car3_control)/config/car3_controllers.yaml" command="load"/>
+
+        <node name="controller_spawner" pkg="controller_manager" type="spawner"
+              args="joint_state_controller
+                    wheel_lf_velocity_controller
+                    wheel_rf_velocity_controller
+                    wheel_lb_velocity_controller
+                    wheel_rb_velocity_controller"
+              output="screen"/>
+
+        <node name="mecanum_controller_node" pkg="car3_control" type="mecanum_controller_node"
+              output="screen">
+            <param name="wheel_radius" value="0.0489"/>
+            <param name="wheel_base_x_half" value="0.0973"/>
+            <param name="wheel_base_y_half" value="0.1058"/>
+            <param name="sign_fl" value="1.0"/>
+            <param name="sign_fr" value="1.0"/>
+            <param name="sign_rl" value="1.0"/>
+            <param name="sign_rr" value="1.0"/>
+        </node>
+
+        <node name="ground_truth_odom" pkg="car3_control" type="ground_truth_odom_node"
+              output="screen">
+            <param name="model_name" value="$(arg car)"/>
+            <param name="odom_frame" value="$(arg car)/odom"/>
+            <param name="base_frame" value="$(arg car)/base_footprint"/>
+        </node>
+    </group>
+</launch>

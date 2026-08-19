@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <!-- full three-car scenario: bringup + one shared map + 3x AMCL +
+         3x nav_to_pose (on injected scan_filtered) + shared state + virtual obstacles.
+         AMCL uses the RAW /carN/scan; nav_to_pose uses /carN/scan_filtered with the
+         other cars' virtual boxes injected. -->
+    <arg name="gui" default="false"/>
+    <arg name="car0_x" default="2.3"/>
+    <arg name="car0_y" default="2.4"/>
+    <arg name="car0_yaw" default="-2.334"/>
+    <arg name="car1_x" default="-2.3"/>
+    <arg name="car1_y" default="-2.4"/>
+    <arg name="car1_yaw" default="0.808"/>
+    <arg name="car2_x" default="-6.5"/>
+    <arg name="car2_y" default="6.6"/>
+    <arg name="car2_yaw" default="0.0"/>
+
+    <include file="$(find car3_swarm)/launch/multi_car3_bringup.launch">
+        <arg name="gui" value="$(arg gui)"/>
+        <arg name="car0_x" value="$(arg car0_x)"/>
+        <arg name="car0_y" value="$(arg car0_y)"/>
+        <arg name="car0_yaw" value="$(arg car0_yaw)"/>
+        <arg name="car1_x" value="$(arg car1_x)"/>
+        <arg name="car1_y" value="$(arg car1_y)"/>
+        <arg name="car1_yaw" value="$(arg car1_yaw)"/>
+        <arg name="car2_x" value="$(arg car2_x)"/>
+        <arg name="car2_y" value="$(arg car2_y)"/>
+        <arg name="car2_yaw" value="$(arg car2_yaw)"/>
+    </include>
+
+    <!-- one map for all cars (map frame == world frame) -->
+    <node name="map_server" pkg="map_server" type="map_server"
+          args="$(find car3_control)/maps/nesting_room.yaml"/>
+
+    <!-- 1.6: global shared state broadcaster -->
+    <node name="car_state_broadcaster" pkg="car3_swarm" type="car_state_broadcaster"
+          output="screen">
+        <rosparam param="cars">[car0, car1, car2]</rosparam>
+        <param name="rate" value="20.0"/>
+    </node>
+
+    <!-- car0: defender, NE inner corner -->
+    <!-- nav nodes wait until this car's laser actually publishes (bounded
+         fallback to old behavior): avoids the startup race where subscriber
+         churn during the spawn window can leave the gazebo laser plugin
+         advertised but silent -->
+    <group ns="car0">
+        <node name="amcl" pkg="amcl" type="amcl" output="screen"
+              launch-prefix="bash -c 'timeout 90 rostopic echo -n1 /car0/scan &gt;/dev/null 2&gt;&amp;1 || true; exec $0 $@'">
+            <remap from="static_map" to="/static_map"/>
+            <rosparam file="$(find car3_control)/params/amcl_params.yaml" command="load"/>
+            <param name="odom_frame_id" value="car0/odom"/>
+            <param name="base_frame_id" value="car0/base_footprint"/>
+            <param name="initial_pose_x" value="$(arg car0_x)"/>
+            <param name="initial_pose_y" value="$(arg car0_y)"/>
+            <param name="initial_pose_a" value="$(arg car0_yaw)"/>
+        </node>
+        <node name="virtual_obstacle" pkg="car3_swarm" type="virtual_obstacle_node"
+              output="screen"
+              launch-prefix="bash -c 'timeout 90 rostopic echo -n1 /car0/scan &gt;/dev/null 2&gt;&amp;1 || true; exec $0 $@'">
+            <rosparam param="other_cars">[car1, car2]</rosparam>
+        </node>
+        <node name="nav_to_pose" pkg="car3_control" type="nav_to_pose_node"
+              output="screen"
+              launch-prefix="bash -c 'timeout 90 rostopic echo -n1 /car0/scan &gt;/dev/null 2&gt;&amp;1 || true; exec $0 $@'">
+            <rosparam file="$(find car3_control)/params/nav_to_pose_params.yaml"
+                      command="load"/>
+            <param name="scan_topic" value="scan_filtered"/>
+        </node>
+    </group>
+
+    <!-- car1: defender, SW inner corner -->
+    <group ns="car1">
+        <node name="amcl" pkg="amcl" type="amcl" output="screen"
+              launch-prefix="bash -c 'timeout 90 rostopic echo -n1 /car1/scan &gt;/dev/null 2&gt;&amp;1 || true; exec $0 $@'">
+            <remap from="static_map" to="/static_map"/>
+            <rosparam file="$(find car3_control)/params/amcl_params.yaml" command="load"/>
+            <param name="odom_frame_id" value="car1/odom"/>
+            <param name="base_frame_id" value="car1/base_footprint"/>
+            <param name="initial_pose_x" value="$(arg car1_x)"/>
+            <param name="initial_pose_y" value="$(arg car1_y)"/>
+            <param name="initial_pose_a" value="$(arg car1_yaw)"/>
+        </node>
+        <node name="virtual_obstacle" pkg="car3_swarm" type="virtual_obstacle_node"
+              output="screen"
+              launch-prefix="bash -c 'timeout 90 rostopic echo -n1 /car1/scan &gt;/dev/null 2&gt;&amp;1 || true; exec $0 $@'">
+            <rosparam param="other_cars">[car0, car2]</rosparam>
+        </node>
+        <node name="nav_to_pose" pkg="car3_control" type="nav_to_pose_node"
+              output="screen"
+              launch-prefix="bash -c 'timeout 90 rostopic echo -n1 /car1/scan &gt;/dev/null 2&gt;&amp;1 || true; exec $0 $@'">
+            <rosparam file="$(find car3_control)/params/nav_to_pose_params.yaml"
+                      command="load"/>
+            <param name="scan_topic" value="scan_filtered"/>
+        </node>
+    </group>
+
+    <!-- car2: intruder, NW outer corner -->
+    <group ns="car2">
+        <node name="amcl" pkg="amcl" type="amcl" output="screen"
+              launch-prefix="bash -c 'timeout 90 rostopic echo -n1 /car2/scan &gt;/dev/null 2&gt;&amp;1 || true; exec $0 $@'">
+            <remap from="static_map" to="/static_map"/>
+            <rosparam file="$(find car3_control)/params/amcl_params.yaml" command="load"/>
+            <param name="odom_frame_id" value="car2/odom"/>
+            <param name="base_frame_id" value="car2/base_footprint"/>
+            <param name="initial_pose_x" value="$(arg car2_x)"/>
+            <param name="initial_pose_y" value="$(arg car2_y)"/>
+            <param name="initial_pose_a" value="$(arg car2_yaw)"/>
+        </node>
+        <node name="virtual_obstacle" pkg="car3_swarm" type="virtual_obstacle_node"
+              output="screen"
+              launch-prefix="bash -c 'timeout 90 rostopic echo -n1 /car2/scan &gt;/dev/null 2&gt;&amp;1 || true; exec $0 $@'">
+            <rosparam param="other_cars">[car0, car1]</rosparam>
+        </node>
+        <node name="nav_to_pose" pkg="car3_control" type="nav_to_pose_node"
+              output="screen"
+              launch-prefix="bash -c 'timeout 90 rostopic echo -n1 /car2/scan &gt;/dev/null 2&gt;&amp;1 || true; exec $0 $@'">
+            <rosparam file="$(find car3_control)/params/nav_to_pose_params.yaml"
+                      command="load"/>
+            <param name="scan_topic" value="scan_filtered"/>
+        </node>
+    </group>
+</launch>

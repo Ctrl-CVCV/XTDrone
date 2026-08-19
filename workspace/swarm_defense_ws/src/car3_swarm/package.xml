@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>car3_swarm</name>
+  <version>1.0.0</version>
+  <description>Three-car intrusion &amp; interception simulation in nesting_room: multi-car bringup/nav launches, per-car namespace isolation, shared state broadcaster, virtual obstacle scan injection, teleop and waypoint scripts.</description>
+  <maintainer email="liuhanxu@todo.todo">liuhanxu</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>roscpp</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>nav_msgs</build_depend>
+  <build_depend>gazebo_msgs</build_depend>
+  <build_depend>tf2</build_depend>
+
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>gazebo_msgs</exec_depend>
+  <exec_depend>tf2</exec_depend>
+  <exec_depend>message_runtime</exec_depend>
+
+  <exec_depend>car3_control</exec_depend>
+  <exec_depend>basic_room_sim</exec_depend>
+  <exec_depend>amcl</exec_depend>
+  <exec_depend>map_server</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+  <exec_depend>gazebo_ros_control</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>actionlib</exec_depend>
+  <exec_depend>move_base_msgs</exec_depend>
+  <exec_depend>python3-rospy</exec_depend>
+</package>

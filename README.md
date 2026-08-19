@@ -1,12 +1,15 @@
-# XTDrone 单车仿真（single_car_simulation）
+# XTDrone 仿真（single_car_simulation：单车全链路 + 多车协同任务）
 
-car3 麦轮（mecanum）小车在 Gazebo 中的**单车**全链路仿真：
+car3 麦轮（mecanum）小车在 Gazebo 中的仿真，含**单车**全链路与**多车**协同任务两条线：
 
 ```
-/cmd_vel → 麦轮逆运动学 → ros_control → Gazebo 轮关节
+单车：/cmd_vel → 麦轮逆运动学 → ros_control → Gazebo 轮关节
 建图：car3 激光 + gmapping → map_saver
 导航：map_server + AMCL + 自研三阶段 nav_to_pose（转向对齐 → 直线平移 → 到位转向）
 避障：激光势场横向平移避让 + 横向逃逸（右侧优先 → 卡住切左 → 死局中止）
+
+多车：三车（car0/car1 防守 + car2 入侵）在 nesting_room 四门套间中的
+     巡检—入侵—区域封控—协同围捕 一体化闭环任务（见第四节）
 ```
 
 Gazebo / RViz 直连宿主 X11（NVIDIA GPU 渲染），一键启动脚本见下文。
@@ -28,16 +31,28 @@ Gazebo / RViz 直连宿主 X11（NVIDIA GPU 渲染），一键启动脚本见下
 │   │       │   ├── models/          # basic_room / 6_6_room / nesting_room
 │   │       │   ├── worlds/
 │   │       │   └── launch/
-│   │       └── car3_control/        # 单车仿真核心包
-│   │           ├── launch/          # bringup / slam / nav / nav_to_pose 启动文件
-│   │           ├── config/          # ros_control 控制器、Gazebo PID
-│   │           ├── params/          # AMCL / costmap / DWA / move_base / nav_to_pose 参数
-│   │           ├── maps/            # 已建地图（当前主地图 nesting_room）
-│   │           ├── rviz/            # RViz 配置
-│   │           ├── scripts/         # car3_keyboard_control.py 键盘控制
-│   │           └── src/             # C++ 节点：麦轮逆运动学 / ground_truth 里程计 /
-│   │                                #   三阶段 nav_to_pose / 麦轮辊子抓地力 Gazebo 插件
+│   │       ├── car3_control/        # 单车仿真核心包
+│   │       │   ├── launch/          # bringup / slam / nav / nav_to_pose 启动文件
+│   │       │   ├── config/          # ros_control 控制器、Gazebo PID
+│   │       │   ├── params/          # AMCL / costmap / DWA / move_base / nav_to_pose 参数
+│   │       │   ├── maps/            # 已建地图（当前主地图 nesting_room）
+│   │       │   ├── rviz/            # RViz 配置
+│   │       │   ├── scripts/         # car3_keyboard_control.py 键盘控制
+│   │       │   └── src/             # C++ 节点：麦轮逆运动学 / ground_truth 里程计 /
+│   │       │                        #   三阶段 nav_to_pose / 麦轮辊子抓地力 Gazebo 插件
+│   │       └── car3_swarm/          # 多车协同任务核心包
+│   │           ├── launch/          # multi_car3_mission.launch 一体化任务入口
+│   │           ├── config/          # mission_params.yaml 任务参数（单一数据源）
+│   │           ├── scripts/         # patrol_node / intruder_node / mission_manager
+│   │           │                    #   键盘遥控 / 航点导航 / 轨迹记录工具
+│   │           ├── src/             # C++：car_state_broadcaster / virtual_obstacle
+│   │           └── *.md             # 使用 / 巡检模式 / 一体化任务 等开发文档
 │   ├── car3_demo.sh                 # 一键全链路演示（Gazebo + 导航 + RViz）
+│   ├── mission_demo.sh              # 多车一体化任务一键演示（每轮随机换门、可多轮）
+│   ├── mission_demo_up.sh           # 单门入侵演示：上门（UP）
+│   ├── mission_demo_down.sh         # 单门入侵演示：下门（DOWN）
+│   ├── mission_demo_left.sh         # 单门入侵演示：左门（LEFT）
+│   ├── mission_demo_right.sh        # 单门入侵演示：右门（RIGHT）
 │   ├── car3_slam_nestingroom.sh     # nesting_room 手动建图
 │   ├── car3_slam_66room.sh          # 6_6_room 手动建图
 │   ├── nav_goal.py                  # 命令行发导航目标（支持多目标串行）
@@ -147,7 +162,50 @@ docker exec xtdrone-dev bash -c "source /home/dev/car3_env.sh && \
 docker exec xtdrone-dev bash -c "source /home/dev/car3_env.sh && python3 /workspace/set_pose.py"
 ```
 
-## 四、核心算法说明
+## 四、运行多车仿真（巡检—入侵—区域封控—协同围捕）
+
+三车（car0 / car1 防守方 + car2 入侵方）在 nesting_room 四门套间（上/下/左/右四门）中的
+一体化闭环任务：`巡检 → 入侵 → 区域封控 → 协同围捕 → 捕获 → 最终对齐 → SUCCESS`。
+
+### 1. 一键演示（随机门、可多轮）
+
+```bash
+docker exec -it xtdrone-dev bash /workspace/mission_demo.sh
+```
+
+脚本自动完成：清理残留仿真 → 启动 `multi_car3_mission.launch`（Gazebo + 三车 +
+任务状态机/入侵车管理）→ 自动调用 `/mission/start`。每轮入侵门随机选取（不连续重复），
+一轮结束后交互选择复位继续或退出。
+
+### 2. 单门单轮演示
+
+固定从某一个门入侵，单轮到达终态后自动停止仿真并退出（无复位、无多轮循环）：
+
+```bash
+docker exec -it xtdrone-dev bash /workspace/mission_demo_up.sh      # 上门 UP
+docker exec -it xtdrone-dev bash /workspace/mission_demo_down.sh    # 下门 DOWN
+docker exec -it xtdrone-dev bash /workspace/mission_demo_left.sh    # 左门 LEFT
+docker exec -it xtdrone-dev bash /workspace/mission_demo_right.sh   # 右门 RIGHT
+```
+
+无界面（headless）运行加参数 `false`：
+`docker exec xtdrone-dev bash /workspace/mission_demo_up.sh false`
+
+### 3. 任务状态机（/mission/state）
+
+| 状态 | 含义 |
+|---|---|
+| M_PATROL | car0/car1 按规划门序巡逻 |
+| M_INTRUSION | 检测到 car2 进入内区 |
+| M_CONTAINMENT_ACTIVE | 分配拦截/追捕角色，区域封控 |
+| M_CAPTURE | 双车夹击捕获入侵车 |
+| M_FINAL_ALIGN | 最终位姿对齐 |
+| M_SUCCESS | 任务成功（result=CAPTURE） |
+| M_FAILED_ESCAPE / M_INVALID_ESCAPE | 入侵车逃逸（合法门 / 原入口门） |
+
+完整设计见 `car3_swarm/一体化任务文档.md`。
+
+## 五、核心算法说明
 
 三阶段 nav_to_pose（`car3_control/src/nav_to_pose_node.cpp`，动作接口 `/move_base`）：
 
@@ -159,7 +217,7 @@ docker exec xtdrone-dev bash -c "source /home/dev/car3_env.sh && python3 /worksp
 所有单点判定均带容差滞回（进入/退出半径不同），避免状态抖动。
 完整设计见 `car3_全链路开发报告.md`。
 
-## 五、演示截图
+## 六、演示截图
 
 ![demo_final](images/demo_final.png)
 
