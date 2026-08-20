@@ -110,8 +110,34 @@ if (BUILD_ROS_PLUGINS)
   find_package(sensor_msgs REQUIRED)
 endif()
 
-# find MAVLink
-find_package(MAVLink)
+# find MAVLink — prefer PX4-generated headers over ROS system package
+# PX4 builds generate mavlink with dialect dirs (common, development, ...) at
+# the top level, which matches the #include <development/mavlink.h> style used
+# by this project.
+set(_PX4_MAVLINK_SEARCH_PATHS
+    ${CMAKE_CURRENT_BINARY_DIR}/../px4/mavlink         # catkin px4 build
+    ${CMAKE_SOURCE_DIR}/../../../build/px4_sitl_default/mavlink  # PX4-Autopilot build
+    ${CMAKE_SOURCE_DIR}/../../build/px4_sitl_default/mavlink
+    ${CMAKE_CURRENT_BINARY_DIR}/../px4_sitl_default/mavlink
+    )
+find_path(_PX4_MAVLINK_INCLUDE_DIR
+    NAMES development/mavlink.h
+    PATHS ${_PX4_MAVLINK_SEARCH_PATHS}
+    NO_DEFAULT_PATH
+    )
+if(_PX4_MAVLINK_INCLUDE_DIR)
+    message(STATUS "Using PX4-generated mavlink: ${_PX4_MAVLINK_INCLUDE_DIR}")
+    set(MAVLINK_INCLUDE_DIRS ${_PX4_MAVLINK_INCLUDE_DIR})
+    set(MAVLINK_VERSION "2.0")
+    set(MAVLINK_FOUND TRUE)
+else()
+    message(STATUS "PX4 mavlink not found, falling back to find_package(MAVLink)")
+    find_package(MAVLink)
+    # The ROS mavlink package installs dialect headers under mavlink/v2.0/
+    if(EXISTS "${MAVLINK_INCLUDE_DIRS}/mavlink/v2.0")
+      list(APPEND MAVLINK_INCLUDE_DIRS "${MAVLINK_INCLUDE_DIRS}/mavlink/v2.0")
+    endif()
+endif()
 
 # see if catkin was invoked to build this
 if (CATKIN_DEVEL_PREFIX)

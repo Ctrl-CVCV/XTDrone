@@ -28,31 +28,48 @@ set(_MAVLINK_EXTRA_SEARCH_PATHS
     /usr/local/
     )
 
-# look for in the hints first
+# look for PX4-generated mavlink headers first (flat dialect structure)
+# PX4 builds generate mavlink where dialect dirs (common, development, ...)
+# are directly inside the mavlink/ directory (e.g. build/px4_sitl_default/mavlink/)
 find_path(_MAVLINK_INCLUDE_DIR
-    NAMES mavlink_types.h
-    PATH_SUFFIXES include
+    NAMES development/mavlink.h
+    PATH_SUFFIXES mavlink
     HINTS ${_MAVLINK_EXTRA_SEARCH_HINTS}
-    NO_DEFAULT_PATH
+    PATHS ${_MAVLINK_EXTRA_SEARCH_PATHS}
+    DOC "PX4-generated mavlink include directory"
     )
+
+# look for in the hints first
+if(NOT _MAVLINK_INCLUDE_DIR)
+  find_path(_MAVLINK_INCLUDE_DIR
+      NAMES mavlink_types.h
+      PATH_SUFFIXES include
+      HINTS ${_MAVLINK_EXTRA_SEARCH_HINTS}
+      NO_DEFAULT_PATH
+      )
+endif()
 
 # look for in the hard-coded paths
-find_path(_MAVLINK_INCLUDE_DIR
-    NAMES mavlink_types.h
-    PATH_SUFFIXES include/mavlink
-    PATHS ${_MAVLINK_EXTRA_SEARCH_PATHS}
-    NO_CMAKE_PATH
-    NO_CMAKE_ENVIRONMENT_PATH
-    NO_SYSTEM_ENVIRONMENT_PATH
-    NO_CMAKE_SYSTEM_PATH
-    )
+if(NOT _MAVLINK_INCLUDE_DIR)
+  find_path(_MAVLINK_INCLUDE_DIR
+      NAMES mavlink_types.h
+      PATH_SUFFIXES include/mavlink
+      PATHS ${_MAVLINK_EXTRA_SEARCH_PATHS}
+      NO_CMAKE_PATH
+      NO_CMAKE_ENVIRONMENT_PATH
+      NO_SYSTEM_ENVIRONMENT_PATH
+      NO_CMAKE_SYSTEM_PATH
+      )
+endif()
 
 # look specifically for the ROS version if no other was found
-find_path(_MAVLINK_INCLUDE_DIR
-   NAMES mavlink/v1.0/mavlink_types.h mavlink/v2.0/mavlink_types.h
-   PATH_SUFFIXES include
-   PATHS /opt/ros/${ROS_DISTRO}/
-   )
+if(NOT _MAVLINK_INCLUDE_DIR)
+  find_path(_MAVLINK_INCLUDE_DIR
+     NAMES mavlink/v1.0/mavlink_types.h mavlink/v2.0/mavlink_types.h
+     PATH_SUFFIXES include
+     PATHS /opt/ros/${ROS_DISTRO}/
+     )
+endif()
 
 # read the version
 if (EXISTS ${_MAVLINK_INCLUDE_DIR}/mavlink/config.h)
