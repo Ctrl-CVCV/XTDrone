@@ -42,7 +42,7 @@ public:
     pnh_.param("goal_yaw_tolerance", goal_yaw_tolerance_, 0.05);
     pnh_.param("goal_yaw_start_tolerance", goal_yaw_start_tolerance_, 0.15);
     pnh_.param("settled_cycles", settled_cycles_, 5);
-    pnh_.param("scan_topic", scan_topic_, std::string("/scan"));
+    pnh_.param("scan_topic", scan_topic_, std::string("scan"));
     pnh_.param("repulse_range", repulse_range_, 0.6);
     pnh_.param("repulse_gain", repulse_gain_, 0.8);
     pnh_.param("escape_angle", escape_angle_, 0.3927);
@@ -56,11 +56,11 @@ public:
     pnh_.param("stall_min_progress", stall_min_progress_, 0.08);
     pnh_.param("rate", rate_, 20.0);
 
-    cmd_pub_ = nh_.advertise<geometry_msgs::Twist>("/cmd_vel", 1);
-    pose_sub_ = nh_.subscribe("/amcl_pose", 1, &NavToPose::poseCb, this);
-    odom_sub_ = nh_.subscribe("/odom", 1, &NavToPose::odomCb, this);
+    cmd_pub_ = nh_.advertise<geometry_msgs::Twist>("cmd_vel", 1);
+    pose_sub_ = nh_.subscribe("amcl_pose", 1, &NavToPose::poseCb, this);
+    odom_sub_ = nh_.subscribe("odom", 1, &NavToPose::odomCb, this);
     scan_sub_ = nh_.subscribe(scan_topic_, 1, &NavToPose::scanCb, this);
-    goal_sub_ = nh_.subscribe("/move_base_simple/goal", 1, &NavToPose::topicGoalCb, this);
+    goal_sub_ = nh_.subscribe("move_base_simple/goal", 1, &NavToPose::topicGoalCb, this);
 
     as_.registerGoalCallback(boost::bind(&NavToPose::actionGoalCb, this));
     as_.registerPreemptCallback(boost::bind(&NavToPose::actionPreemptCb, this));

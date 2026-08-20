@@ -29,7 +29,7 @@ goal_yaw_start_tolerance: 0.25
 
 settled_cycles: 5  # consecutive in-tolerance cycles before switching phase
 
-scan_topic: /scan
+scan_topic: scan
 repulse_range: 0.6     # obstacles closer than this push the robot away
 repulse_gain: 0.8      # fraction of max_vel_trans used for repulsion
 # head-on escape: obstacle within +/-escape_angle (rad, 0.3927 = 22.5 deg,

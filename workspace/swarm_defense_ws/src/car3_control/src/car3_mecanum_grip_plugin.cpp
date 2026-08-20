@@ -31,18 +31,20 @@ public:
     r_ = 0.0489;
     muN_ = 52.0;
     c_ = 2000.0;
+    linkPrefix_ = "";
 
     if (sdf->HasElement("wheel_radius")) r_ = sdf->Get<double>("wheel_radius");
     if (sdf->HasElement("grip_force_max")) muN_ = sdf->Get<double>("grip_force_max");
     if (sdf->HasElement("grip_gain")) c_ = sdf->Get<double>("grip_gain");
+    if (sdf->HasElement("link_prefix")) linkPrefix_ = sdf->Get<std::string>("link_prefix");
 
     // grip direction in base frame (X-type mecanum)
     struct Wheel { std::string link; std::string joint; ignition::math::Vector3d grip; };
     std::vector<Wheel> cfg = {
-      {"wheel_lf_link", "wheel_lf_joint", { 0.7071, -0.7071, 0.0}},
-      {"wheel_rf_link", "wheel_rf_joint", { 0.7071,  0.7071, 0.0}},
-      {"wheel_lb_link", "wheel_lb_joint", { 0.7071,  0.7071, 0.0}},
-      {"wheel_rb_link", "wheel_rb_joint", { 0.7071, -0.7071, 0.0}},
+      {linkPrefix_ + "wheel_lf_link", "wheel_lf_joint", { 0.7071, -0.7071, 0.0}},
+      {linkPrefix_ + "wheel_rf_link", "wheel_rf_joint", { 0.7071,  0.7071, 0.0}},
+      {linkPrefix_ + "wheel_lb_link", "wheel_lb_joint", { 0.7071,  0.7071, 0.0}},
+      {linkPrefix_ + "wheel_rb_link", "wheel_rb_joint", { 0.7071, -0.7071, 0.0}},
     };
 
     for (const auto& w : cfg)
@@ -115,6 +117,7 @@ private:
   std::vector<ignition::math::Vector3d> grip_;
   event::ConnectionPtr updateConn_;
   double r_, muN_, c_;
+  std::string linkPrefix_;
 };
 
 GZ_REGISTER_MODEL_PLUGIN(Car3MecanumGrip)

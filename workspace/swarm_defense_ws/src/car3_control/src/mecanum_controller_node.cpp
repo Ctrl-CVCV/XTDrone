@@ -29,12 +29,12 @@ public:
     pnh.param("sign_rl", s_[2], 1.0);
     pnh.param("sign_rr", s_[3], 1.0);
 
-    pubs_[0] = nh.advertise<std_msgs::Float64>("/wheel_lf_velocity_controller/command", 10);
-    pubs_[1] = nh.advertise<std_msgs::Float64>("/wheel_rf_velocity_controller/command", 10);
-    pubs_[2] = nh.advertise<std_msgs::Float64>("/wheel_lb_velocity_controller/command", 10);
-    pubs_[3] = nh.advertise<std_msgs::Float64>("/wheel_rb_velocity_controller/command", 10);
+    pubs_[0] = nh.advertise<std_msgs::Float64>("wheel_lf_velocity_controller/command", 10);
+    pubs_[1] = nh.advertise<std_msgs::Float64>("wheel_rf_velocity_controller/command", 10);
+    pubs_[2] = nh.advertise<std_msgs::Float64>("wheel_lb_velocity_controller/command", 10);
+    pubs_[3] = nh.advertise<std_msgs::Float64>("wheel_rb_velocity_controller/command", 10);
 
-    sub_ = nh.subscribe("/cmd_vel", 10, &MecanumController::cmdVelCallback, this);
+    sub_ = nh.subscribe("cmd_vel", 10, &MecanumController::cmdVelCallback, this);
 
     ROS_INFO("mecanum_controller: r=%.4f L=%.4f W=%.4f signs=[%.0f %.0f %.0f %.0f]",
              r_, L_, W_, s_[0], s_[1], s_[2], s_[3]);
