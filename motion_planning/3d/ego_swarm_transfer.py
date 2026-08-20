@@ -27,7 +27,7 @@ def vision_callback(data, i):
 if __name__ == '__main__':
     rospy.init_node(vehicle_type+'_ego_transfer')
     for i in range(vehicle_num):
-        rospy.Subscriber(vehicle_type+'_'+str(i)+'/mavros/vision_pose/pose', PoseStamped, vision_callback, i,queue_size=1)
+        rospy.Subscriber(vehicle_type+'_'+str(i)+'/mavros/local_position/pose', PoseStamped, vision_callback, i,queue_size=1)
         multi_pose_pub[i] = rospy.Publisher(vehicle_type+'_'+str(i)+'/camera_pose', PoseStamped, queue_size=1)
     rate = rospy.Rate(20)
 

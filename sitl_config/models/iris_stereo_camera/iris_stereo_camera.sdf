@@ -578,7 +578,7 @@
     </include>
 
     <joint name="stereo_joint" type="fixed">
-      <child>stereo_camera::link</child>
+      <child>stereocamera::link</child>
       <parent>base_link</parent>
       <axis>
         <xyz>0 0 1</xyz>

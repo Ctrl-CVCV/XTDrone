@@ -340,14 +340,14 @@ class Communication:
         return rotate_z_rad
 
     def arm(self):
-        if self.armService(True):
+        if self.armService(True).success:
             return True
         else:
             print(self.vehicle_type + '_' + self.vehicle_id + ": arming failed!")
             return False
 
     def disarm(self):
-        if self.armService(False):
+        if self.armService(False).success:
             return True
         else:
             print(self.vehicle_type + '_' + self.vehicle_id + ": disarming failed!")
@@ -364,7 +364,7 @@ class Communication:
         if self.flight_mode == 'HOVER':
             self.hover_flag = 1
             self.hover()
-        elif self.flightModeService(custom_mode=self.flight_mode):
+        elif self.flightModeService(custom_mode=self.flight_mode).mode_sent:
             print(self.vehicle_type + '_' + self.vehicle_id + ": " + self.flight_mode)
             return True
         else:
