@@ -33,6 +33,7 @@ Gazebo / RViz 直连宿主 X11（NVIDIA GPU 渲染），一键启动脚本见下
 │   │       │   └── launch/
 │   │       ├── car3_control/        # 单车仿真核心包
 │   │       │   ├── launch/          # bringup / slam / nav / nav_to_pose 启动文件
+│   │       │   ├── meshes/          # car3 模型 STL 网格（7 个，见第五节集成方法）
 │   │       │   ├── config/          # ros_control 控制器、Gazebo PID
 │   │       │   ├── params/          # AMCL / costmap / DWA / move_base / nav_to_pose 参数
 │   │       │   ├── maps/            # 已建地图（当前主地图 nesting_room）
@@ -205,7 +206,24 @@ docker exec -it xtdrone-dev bash /workspace/mission_demo_right.sh   # 右门 RIG
 
 完整设计见 `car3_swarm/一体化任务文档.md`。
 
-## 五、核心算法说明
+## 五、car3 模型集成方法
+
+car3 麦轮车模型在仿真镜像中的集成（位于容器 `/home/dev` 下，属镜像层、非宿主挂载）：
+
+| 位置（容器内） | 内容 |
+|---|---|
+| `/home/dev/XTDrone/sitl_config/ugv/car3/` | **car3 ROS 包**（=`/home/dev/catkin_ws/src/car3`）：`urdf/car3.urdf`、`meshes/`（7 个 STL）、`launch/car3.launch`、`world/math.world`、`scripts/car3_keyboard_control.py`、`README_car3.md` |
+| `/home/dev/PX4-Autopilot/Tools/sitl_gazebo/models/car3/` | **car3 SDF 模型** `car3.sdf` + 同 7 个 STL，位于 `GAZEBO_MODEL_PATH`，内部以 `model://car3/meshes/*.STL` 引用 |
+| `/home/dev/PX4-Autopilot/launch/car3.launch`、`/home/dev/XTDrone/sitl_config/launch/car3.launch` | 单车 launch 镜像：`spawn_model -urdf` 从 `urdf/car3.urdf` 生成 |
+| `/home/dev/XTDrone/coordination/launch_generator/generator.py` | XTDrone 多车生成器，`vehicle_type 9` = car3 |
+
+**本仓库 meshes 的存放与作用**：
+
+- 仓库 `swarm_defense_ws/src/car3_control/meshes/` 存放上述 7 个 STL 网格（`base_link / imu_link / laser_link / wheel_lf / wheel_lb / wheel_rf / wheel_rb`），与容器 car3 包 meshes 完全一致，作为模型资源自包含备份。
+- **多车仿真实际使用路径**：`car3_control/urdf/car3.xacro` 中以 `package://car3/meshes/*.STL` 引用网格（共 7 处），`car_spawn.launch` 通过 `spawn_model -urdf` 载入；**多车仿真只依赖 car3 包的 STL 网格，不经过 car3.sdf**（SDF 仅供 PX4 单机/XTDrone 常规流程使用）。
+- 部署到新环境时，把仓库 `car3_control/meshes/` 同步进容器 `car3` 包对应目录即可生效；如需仓库网格直接生效，可把 xacro 的 `package://car3/meshes/` 改为 `package://car3_control/meshes/`。
+
+## 六、核心算法说明
 
 三阶段 nav_to_pose（`car3_control/src/nav_to_pose_node.cpp`，动作接口 `/move_base`）：
 
@@ -217,7 +235,7 @@ docker exec -it xtdrone-dev bash /workspace/mission_demo_right.sh   # 右门 RIG
 所有单点判定均带容差滞回（进入/退出半径不同），避免状态抖动。
 完整设计见 `car3_全链路开发报告.md`。
 
-## 六、运行示意图
+## 七、运行示意图
 
 **巡检**：car0（NE 角）守 下门→左门、car1（SW 角）守 上门→右门，按规划门序在
 各自驻留点往返摆扫，持续覆盖全部四门，发现入侵立即上报任务状态机。
