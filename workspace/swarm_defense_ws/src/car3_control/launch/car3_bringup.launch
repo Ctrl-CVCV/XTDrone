@@ -5,14 +5,17 @@
     <arg name="y" default="0.0"/>
     <arg name="z" default="0.01"/>
     <arg name="world_launch" default="basic_room"/>
+    <arg name="start_gazebo" default="true"/>
 
     <!-- Gazebo world (basic_room or 6_6_room) -->
+    <group if="$(arg start_gazebo)">
     <include file="$(find basic_room_sim)/launch/$(arg world_launch).launch">
         <arg name="gui" value="$(arg gui)"/>
     </include>
+    </group>
 
     <!-- car3 model -->
-    <param name="robot_description" textfile="$(find car3)/urdf/car3.urdf"/>
+    <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find car3_control)/urdf/car3.xacro'"/>
 
     <!-- must be on the param server before spawn: gazebo_ros_control
          reads pid_gains while initializing the robot simulation interface -->

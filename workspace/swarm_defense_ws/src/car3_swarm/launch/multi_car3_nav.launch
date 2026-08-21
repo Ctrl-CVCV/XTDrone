@@ -14,8 +14,10 @@
     <arg name="car2_x" default="-6.5"/>
     <arg name="car2_y" default="6.6"/>
     <arg name="car2_yaw" default="0.0"/>
+    <arg name="start_bringup" default="true"/>
+    <arg name="car2_max_vel_trans" default="0.25"/>
 
-    <include file="$(find car3_swarm)/launch/multi_car3_bringup.launch">
+    <include if="$(arg start_bringup)" file="$(find car3_swarm)/launch/multi_car3_bringup.launch">
         <arg name="gui" value="$(arg gui)"/>
         <arg name="car0_x" value="$(arg car0_x)"/>
         <arg name="car0_y" value="$(arg car0_y)"/>
@@ -117,6 +119,7 @@
               launch-prefix="bash -c 'timeout 90 rostopic echo -n1 /car2/scan &gt;/dev/null 2&gt;&amp;1 || true; exec $0 $@'">
             <rosparam file="$(find car3_control)/params/nav_to_pose_params.yaml"
                       command="load"/>
+            <param name="max_vel_trans" value="$(arg car2_max_vel_trans)"/>
             <param name="scan_topic" value="scan_filtered"/>
         </node>
     </group>

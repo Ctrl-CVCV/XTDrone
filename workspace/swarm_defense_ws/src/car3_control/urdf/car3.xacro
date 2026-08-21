@@ -31,7 +31,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://car3/meshes/base_link.STL" />
+        <mesh filename="package://car3_control/meshes/base_link.STL" />
       </geometry>
       <material name="">
         <color rgba="1 1 1 1" />
@@ -40,7 +40,7 @@
     <collision>
       <origin xyz="0 0 0.004" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://car3/meshes/base_link.STL" />
+        <mesh filename="package://car3_control/meshes/base_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -55,7 +55,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://car3/meshes/wheel_lf_link.STL" />
+        <mesh filename="package://car3_control/meshes/wheel_lf_link.STL" />
       </geometry>
       <material name="">
         <color rgba="0.203921568627451 0.203921568627451 0.203921568627451 1" />
@@ -96,7 +96,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://car3/meshes/wheel_rf_link.STL" />
+        <mesh filename="package://car3_control/meshes/wheel_rf_link.STL" />
       </geometry>
       <material name="">
         <color rgba="0.203921568627451 0.203921568627451 0.203921568627451 1" />
@@ -137,7 +137,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://car3/meshes/wheel_lb_link.STL" />
+        <mesh filename="package://car3_control/meshes/wheel_lb_link.STL" />
       </geometry>
       <material name="">
         <color rgba="0.203921568627451 0.203921568627451 0.203921568627451 1" />
@@ -178,7 +178,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://car3/meshes/wheel_rb_link.STL" />
+        <mesh filename="package://car3_control/meshes/wheel_rb_link.STL" />
       </geometry>
       <material name="">
         <color rgba="0.203921568627451 0.203921568627451 0.203921568627451 1" />
@@ -218,7 +218,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://car3/meshes/laser_link.STL" />
+        <mesh filename="package://car3_control/meshes/laser_link.STL" />
       </geometry>
       <material name="">
         <color rgba="0.180392156862745 0.192156862745098 0.211764705882353 1" />
@@ -227,7 +227,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://car3/meshes/laser_link.STL" />
+        <mesh filename="package://car3_control/meshes/laser_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -247,7 +247,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://car3/meshes/imu_link.STL" />
+        <mesh filename="package://car3_control/meshes/imu_link.STL" />
       </geometry>
       <material name="">
         <color rgba="1 1 1 1" />
@@ -256,7 +256,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://car3/meshes/imu_link.STL" />
+        <mesh filename="package://car3_control/meshes/imu_link.STL" />
       </geometry>
     </collision>
   </link>

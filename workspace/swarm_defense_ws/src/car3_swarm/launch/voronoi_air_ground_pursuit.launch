@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Run after multi_vehicle.launch, ground truth, ego_swarm_transfer and
+       uav_offboard_takeoff.  Do not run with multi_car3_mission.launch. -->
+  <arg name="auto_start" default="true"/>
+  <arg name="start_delay" default="1.0"/>
+  <arg name="capture_distance" default="0.3"/>
+  <arg name="boundary_side" default="6.0"/>
+  <arg name="uav_altitude" default="1.5"/>
+  <arg name="goal_period" default="1.0"/>
+  <arg name="rviz" default="false"/>
+
+  <node pkg="car3_swarm" type="voronoi_air_ground_pursuit.py"
+        name="voronoi_air_ground_pursuit" output="screen">
+    <!-- SDF inner-room center; a 6 m square is the requested Voronoi domain. -->
+    <param name="boundary_center_x" value="-0.11576"/>
+    <param name="boundary_center_y" value="-0.00882"/>
+    <param name="boundary_side" value="$(arg boundary_side)"/>
+    <param name="capture_distance" value="$(arg capture_distance)"/>
+    <param name="uav_altitude" value="$(arg uav_altitude)"/>
+    <param name="goal_period" value="$(arg goal_period)"/>
+    <param name="goal_min_change" value="0.15"/>
+    <param name="target_margin" value="0.20"/>
+    <param name="route_tolerance" value="0.35"/>
+    <param name="auto_start" value="$(arg auto_start)"/>
+    <param name="start_delay" value="$(arg start_delay)"/>
+
+    <!-- car2: NW spawn -> west corridor -> LEFT door -> room -> RIGHT door. -->
+    <rosparam param="intruder_route">
+      [[-4.066, 3.5],
+       [-4.066, -0.009],
+       [-2.166, -0.009],
+       [-0.116, -0.009],
+       [1.934, -0.009],
+       [3.534, -0.009],
+       [5.5, -0.009]]
+    </rosparam>
+  </node>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="air_ground_rviz"
+        args="-d $(find car3_swarm)/rviz/air_ground.rviz"/>
+</launch>

@@ -1,0 +1,113 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+  - Class: rviz/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz/Map
+      Name: Map
+      Enabled: true
+      Topic: /map
+      Alpha: 0.7
+    - Class: rviz/TF
+      Name: TF
+      Enabled: true
+      Frame Timeout: 15
+      Marker Scale: 0.6
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+    - Class: rviz/RobotModel
+      Name: car0
+      Enabled: true
+      Robot Description: /car0/robot_description
+      Visual Enabled: true
+    - Class: rviz/RobotModel
+      Name: car1
+      Enabled: true
+      Robot Description: /car1/robot_description
+      Visual Enabled: true
+    - Class: rviz/RobotModel
+      Name: car2
+      Enabled: true
+      Robot Description: /car2/robot_description
+      Visual Enabled: true
+    - Class: rviz/LaserScan
+      Name: car0_scan
+      Enabled: true
+      Topic: /car0/scan
+      Size (m): 0.03
+      Color: 255; 80; 80
+    - Class: rviz/LaserScan
+      Name: car1_scan
+      Enabled: true
+      Topic: /car1/scan
+      Size (m): 0.03
+      Color: 80; 255; 80
+    - Class: rviz/LaserScan
+      Name: car2_scan
+      Enabled: true
+      Topic: /car2/scan
+      Size (m): 0.03
+      Color: 80; 80; 255
+    - Class: rviz/Odometry
+      Name: car0_odom
+      Enabled: true
+      Topic: /car0/odom
+      Covariance: false
+    - Class: rviz/Odometry
+      Name: car1_odom
+      Enabled: true
+      Topic: /car1/odom
+      Covariance: false
+    - Class: rviz/Odometry
+      Name: car2_odom
+      Enabled: true
+      Topic: /car2/odom
+      Covariance: false
+    - Class: rviz/Pose
+      Name: iris0_pose
+      Enabled: true
+      Topic: /air_ground/iris_0/world_pose
+      Shape: Arrow
+      Color: 255; 255; 0
+      Alpha: 1
+      Head Length: 0.35
+      Head Radius: 0.18
+      Shaft Length: 0.7
+      Shaft Radius: 0.09
+    - Class: rviz/Pose
+      Name: iris1_pose
+      Enabled: true
+      Topic: /air_ground/iris_1/world_pose
+      Shape: Arrow
+      Color: 255; 0; 255
+      Alpha: 1
+      Head Length: 0.35
+      Head Radius: 0.18
+      Shaft Length: 0.7
+      Shaft Radius: 0.09
+    - Class: rviz/MarkerArray
+      Name: voronoi_pursuit
+      Enabled: true
+      Marker Topic: /air_ground/pursuit/markers
+      Queue Size: 10
+  Enabled: true
+  Global Options:
+    Fixed Frame: map
+    Frame Rate: 30
+    Background Color: 48; 48; 48
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 18
+      Focal Point: 0; 0; 0
+      Pitch: 1.0
+      Yaw: 0.7

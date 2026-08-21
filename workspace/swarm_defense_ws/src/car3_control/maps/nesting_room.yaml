@@ -1,4 +1,4 @@
-image: /workspace/swarm_defense_ws/src/car3_control/maps/nesting_room.pgm
+image: nesting_room.pgm
 resolution: 0.050000
 origin: [-8.000000, -8.000000, 0.000000]
 negate: 0
