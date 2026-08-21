@@ -4,20 +4,67 @@
     <!-- launches Gazebo environment and 2x: MAVROS, PX4 SITL, and spawns vehicle -->
     <!-- vehicle model and world -->
     <arg name="est" default="ekf2"/>
-    <arg name="world" default="$(find mavlink_sitl_gazebo)/worlds/outdoor2.world"/>
+    <arg name="world" default="$(find basic_room_sim)/worlds/nesting_room.world"/>
     <!-- gazebo configs -->
     <arg name="gui" default="true"/>
     <arg name="debug" default="false"/>
     <arg name="verbose" default="false"/>
     <arg name="paused" default="false"/>
+    <arg name="start_gazebo" default="true"/>
+    <arg name="spawn_cars" default="true"/>
+    <arg name="start_car_nav" default="true"/>
+    <arg name="start_ego" default="false"/>
+    <arg name="start_uav_rviz_state" default="true"/>
+    <arg name="car0_x" default="2.3"/>
+    <arg name="car0_y" default="2.4"/>
+    <arg name="car0_yaw" default="-2.334"/>
+    <arg name="car1_x" default="-2.3"/>
+    <arg name="car1_y" default="-2.4"/>
+    <arg name="car1_yaw" default="0.808"/>
+    <arg name="car2_x" default="-6.5"/>
+    <arg name="car2_y" default="6.6"/>
+    <arg name="car2_yaw" default="0.0"/>
+    <arg name="car2_max_vel_trans" default="0.25"/>
+    <env name="GAZEBO_MODEL_PATH" value="$(find basic_room_sim)/models:$(optenv GAZEBO_MODEL_PATH)"/>
     <!-- Gazebo sim -->
-    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <include if="$(arg start_gazebo)" file="$(find gazebo_ros)/launch/empty_world.launch">
         <arg name="gui" value="$(arg gui)"/>
         <arg name="world_name" value="$(arg world)"/>
         <arg name="debug" value="$(arg debug)"/>
         <arg name="verbose" value="$(arg verbose)"/>
         <arg name="paused" value="$(arg paused)"/>
     </include>
+    <!-- Publish UAV world poses for the shared RViz map frame. -->
+    <node if="$(arg start_uav_rviz_state)" pkg="car3_swarm" type="uav_rviz_state.py"
+          name="uav_rviz_state" output="screen"/>
+    <!-- car0/car1 defenders and car2 intruder in the same Gazebo instance. -->
+    <!-- Optional planners reuse the already-spawned cars and aircraft. -->
+    <include if="$(arg start_car_nav)" file="$(find car3_swarm)/launch/multi_car3_nav.launch">
+        <arg name="start_bringup" value="false"/>
+        <arg name="car2_max_vel_trans" value="$(arg car2_max_vel_trans)"/>
+        <arg name="gui" value="false"/>
+    </include>
+    <include if="$(arg start_ego)" file="$(find ego_planner)/launch/multi_uav.launch"/>
+    <group if="$(arg spawn_cars)">
+        <include file="$(find car3_swarm)/launch/car_spawn.launch">
+            <arg name="car" value="car0"/>
+            <arg name="x" value="$(arg car0_x)"/>
+            <arg name="y" value="$(arg car0_y)"/>
+            <arg name="yaw" value="$(arg car0_yaw)"/>
+        </include>
+        <include file="$(find car3_swarm)/launch/car_spawn.launch">
+            <arg name="car" value="car1"/>
+            <arg name="x" value="$(arg car1_x)"/>
+            <arg name="y" value="$(arg car1_y)"/>
+            <arg name="yaw" value="$(arg car1_yaw)"/>
+        </include>
+        <include file="$(find car3_swarm)/launch/car_spawn.launch">
+            <arg name="car" value="car2"/>
+            <arg name="x" value="$(arg car2_x)"/>
+            <arg name="y" value="$(arg car2_y)"/>
+            <arg name="yaw" value="$(arg car2_yaw)"/>
+        </include>
+    </group>
      <!-- iris_0 -->
      <group ns="iris_0">
         <!-- MAVROS and vehicle configs -->
@@ -26,8 +73,8 @@
             <arg name="fcu_url" default="udp://:14540@localhost:14580"/>
         <!-- PX4 SITL and vehicle spawn -->
         <include file="$(find px4)/launch/single_vehicle_spawn_xtd.launch">
-            <arg name="x" value="0"/>
-            <arg name="y" value="3"/>
+            <arg name="x" value="-2.3"/>
+            <arg name="y" value="2.3"/>
             <arg name="z" value="0"/>
             <arg name="R" value="0"/>
             <arg name="P" value="0"/>
@@ -55,8 +102,8 @@
             <arg name="fcu_url" default="udp://:14541@localhost:14581"/>
         <!-- PX4 SITL and vehicle spawn -->
         <include file="$(find px4)/launch/single_vehicle_spawn_xtd.launch">
-            <arg name="x" value="0"/>
-            <arg name="y" value="6"/>
+            <arg name="x" value="2.3"/>
+            <arg name="y" value="-2.3"/>
             <arg name="z" value="0"/>
             <arg name="R" value="0"/>
             <arg name="P" value="0"/>
