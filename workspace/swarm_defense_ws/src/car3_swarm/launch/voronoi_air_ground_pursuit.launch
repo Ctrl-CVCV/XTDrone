@@ -1,13 +1,21 @@
 <?xml version="1.0"?>
 <launch>
-  <!-- Run after multi_vehicle.launch, ground truth, ego_swarm_transfer and
+  <!-- Dual-intruder run after multi_vehicle.launch, ground truth, ego_swarm_transfer and
        uav_offboard_takeoff.  Do not run with multi_car3_mission.launch. -->
   <arg name="auto_start" default="true"/>
   <arg name="start_delay" default="1.0"/>
-  <arg name="capture_distance" default="0.3"/>
+  <arg name="capture_distance" default="0.5"/>
   <arg name="boundary_side" default="6.0"/>
   <arg name="uav_altitude" default="1.5"/>
-  <arg name="goal_period" default="1.0"/>
+  <arg name="goal_period" default="0.25"/>
+  <arg name="uav_goal_period" default="1.5"/>
+  <arg name="uav_goal_min_change" default="0.6"/>
+  <arg name="return_delay" default="0.0"/>
+  <arg name="return_tolerance" default="0.25"/>
+  <arg name="uav_return_tolerance_margin" default="0.15"/>
+  <arg name="return_goal_period" default="1.0"/>
+  <arg name="uav_return_retry" default="10.0"/>
+  <arg name="uav_home_clearance" default="0.8"/>
   <arg name="rviz" default="false"/>
 
   <node pkg="car3_swarm" type="voronoi_air_ground_pursuit.py"
@@ -19,21 +27,35 @@
     <param name="capture_distance" value="$(arg capture_distance)"/>
     <param name="uav_altitude" value="$(arg uav_altitude)"/>
     <param name="goal_period" value="$(arg goal_period)"/>
-    <param name="goal_min_change" value="0.15"/>
+    <param name="uav_goal_period" value="$(arg uav_goal_period)"/>
+    <param name="uav_goal_min_change" value="$(arg uav_goal_min_change)"/>
+    <param name="return_delay" value="$(arg return_delay)"/>
+    <param name="return_tolerance" value="$(arg return_tolerance)"/>
+    <param name="uav_return_tolerance_margin"
+           value="$(arg uav_return_tolerance_margin)"/>
+    <param name="return_goal_period" value="$(arg return_goal_period)"/>
+    <param name="uav_return_retry" value="$(arg uav_return_retry)"/>
+    <param name="uav_home_clearance" value="$(arg uav_home_clearance)"/>
+    <param name="goal_min_change" value="0.05"/>
+    <param name="evader_goal_min_change" value="0.08"/>
+    <param name="evader_lookahead" value="1.2"/>
     <param name="target_margin" value="0.20"/>
     <param name="route_tolerance" value="0.35"/>
     <param name="auto_start" value="$(arg auto_start)"/>
     <param name="start_delay" value="$(arg start_delay)"/>
 
-    <!-- car2: NW spawn -> west corridor -> LEFT door -> room -> RIGHT door. -->
-    <rosparam param="intruder_route">
-      [[-4.066, 3.5],
-       [-4.066, -0.009],
-       [-2.166, -0.009],
-       [-0.116, -0.009],
-       [1.934, -0.009],
-       [3.534, -0.009],
-       [5.5, -0.009]]
+    <!-- car2 enters through the LEFT door and car3 through the RIGHT
+         door. Once inside, each active intruder moves toward the centroid of
+         its own bounded Voronoi cell. -->
+    <rosparam param="intruder_routes">
+      car2:
+        [[-4.066, 3.5],
+         [-4.066, -0.009],
+         [-2.166, -0.009]]
+      car3:
+        [[4.0, -3.5],
+         [4.0, -0.009],
+         [1.85, -0.009]]
     </rosparam>
   </node>
 

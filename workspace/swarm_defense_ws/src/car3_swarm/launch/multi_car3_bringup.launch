@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
-    <!-- three identical car3 in nesting_room (no navigation).
+    <!-- four identical car3 in nesting_room (no navigation).
          Fixed spawn poses (requirement 1.3, defaults stay consistent across runs):
            car0 defender  (2.3, 2.4)   yaw -2.334  NE inner corner, facing center
            car1 defender  (-2.3, -2.4) yaw 0.808   SW inner corner, facing center
            car2 intruder  (-6.5, 6.6)  yaw 0.0     NW outer corner, parallel to north wall
+           car3 intruder  (6.5, -6.5)  yaw 3.14159 SE outer corner
          Per-car topics/services under /carN, TF frames carN/* (requirement 1.4). -->
     <arg name="gui" default="false"/>
     <arg name="car0_x" default="2.3"/>
@@ -16,6 +17,9 @@
     <arg name="car2_x" default="-6.5"/>
     <arg name="car2_y" default="6.6"/>
     <arg name="car2_yaw" default="0.0"/>
+    <arg name="car3_x" default="6.5"/>
+    <arg name="car3_y" default="-6.5"/>
+    <arg name="car3_yaw" default="3.14159"/>
 
     <!-- one gazebo instance with nesting_room world -->
     <include file="$(find basic_room_sim)/launch/nesting_room.launch">
@@ -41,5 +45,12 @@
         <arg name="x" value="$(arg car2_x)"/>
         <arg name="y" value="$(arg car2_y)"/>
         <arg name="yaw" value="$(arg car2_yaw)"/>
+    </include>
+
+    <include file="$(find car3_swarm)/launch/car_spawn.launch">
+        <arg name="car" value="car3"/>
+        <arg name="x" value="$(arg car3_x)"/>
+        <arg name="y" value="$(arg car3_y)"/>
+        <arg name="yaw" value="$(arg car3_yaw)"/>
     </include>
 </launch>

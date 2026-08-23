@@ -217,6 +217,12 @@ def main():
         for status in statuses:
             request_arm(status, args.timeout)
 
+        # Keep the XTDrone bridge control latch in sync with the MAVROS mode.
+        # This releases the initial HOVER hold before takeoff pose streaming.
+        for status in statuses:
+            status.cmd_pub.publish(String(data="OFFBOARD"))
+        rospy.sleep(0.5)
+
         targets = [make_takeoff_pose(s, args.altitude) for s in statuses]
         rospy.loginfo("两机已进入 OFFBOARD 并 ARM，开始原地起飞到 %.2f m", args.altitude)
         rate = rospy.Rate(10)

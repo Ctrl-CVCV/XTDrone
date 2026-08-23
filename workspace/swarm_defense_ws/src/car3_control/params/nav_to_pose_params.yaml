@@ -3,9 +3,9 @@
 # phase commands vth = 0 and avoids obstacles purely by strafing.
 # Head-on obstacles trigger a lateral escape (right first) instead of a stop.
 
-max_vel_trans: 0.7
-max_vel_theta: 0.8
-acc_lim_trans: 0.6
+max_vel_trans: 1.0
+max_vel_theta: 2.0
+acc_lim_trans: 2.0
 acc_lim_theta: 2.0
 
 kp_rot: 2.5        # yaw error (rad) -> angular velocity

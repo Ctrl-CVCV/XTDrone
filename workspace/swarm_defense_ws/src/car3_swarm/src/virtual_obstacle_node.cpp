@@ -4,6 +4,7 @@
 #include <tf2/utils.h>
 #include <mutex>
 #include <map>
+#include <algorithm>
 
 // 1.7: inject the other cars' virtual boxes (2D rectangles at their ground-truth
 // centers) into this car's scan, so the high-mounted lidar can "see" other cars
@@ -28,7 +29,13 @@ public:
     pnh_.param("box_y", boxY_, 0.38);
     pnh_.param("target_box_x", targetBoxX_, 0.34);
     pnh_.param("target_box_y", targetBoxY_, 0.30);
-    pnh_.param("intruder_name", intruderName_, std::string("car2"));
+    pnh_.param("obstacle_timeout", obstacleTimeout_, 0.5);
+    if (!pnh_.getParam("intruder_names", intruderNames_))
+    {
+      std::string legacyIntruder;
+      pnh_.param("intruder_name", legacyIntruder, std::string("car2"));
+      intruderNames_.push_back(legacyIntruder);
+    }
     pnh_.getParam("other_cars", otherCars_);
     hx_ = boxX_ / 2.0;
     hy_ = boxY_ / 2.0;
@@ -44,9 +51,9 @@ public:
     pub_ = nh_.advertise<sensor_msgs::LaserScan>("scan_filtered", 10);
 
     ROS_INFO("virtual_obstacle_node: friendly box %.2fx%.2f, target box "
-             "%.2fx%.2f for '%s', injecting %zu other cars",
-             boxX_, boxY_, targetBoxX_, targetBoxY_, intruderName_.c_str(),
-             otherCars_.size());
+             "%.2fx%.2f for %zu intruders, injecting %zu other cars, timeout %.2fs",
+             boxX_, boxY_, targetBoxX_, targetBoxY_, intruderNames_.size(),
+             otherCars_.size(), obstacleTimeout_);
   }
 
   void odomCb(const nav_msgs::Odometry::ConstPtr& msg)
@@ -60,6 +67,7 @@ public:
   {
     std::lock_guard<std::mutex> lock(mutex_);
     otherPoses_[name] = poseOf(msg->pose.pose);
+    otherStamps_[name] = ros::Time::now();
   }
 
   void scanCb(const sensor_msgs::LaserScan::ConstPtr& msg)
@@ -70,13 +78,16 @@ public:
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (!haveOwn_) { pub_.publish(out); return; }
+      const ros::Time now = ros::Time::now();
       for (const auto& name : otherCars_)
       {
         auto it = otherPoses_.find(name);
-        if (it == otherPoses_.end()) continue;
+        auto stampIt = otherStamps_.find(name);
+        if (it == otherPoses_.end() || stampIt == otherStamps_.end()) continue;
+        if ((now - stampIt->second).toSec() > obstacleTimeout_) continue;
         Box b;
         b.pose = relative(ownPose_, it->second);
-        if (name == intruderName_)
+        if (std::find(intruderNames_.begin(), intruderNames_.end(), name) != intruderNames_.end())
         {
           b.hx = targetHx_;
           b.hy = targetHy_;
@@ -183,13 +194,14 @@ private:
   std::vector<ros::Subscriber> subOthers_;
   ros::Publisher pub_;
   std::vector<std::string> otherCars_;
-  std::string intruderName_;
-  double boxX_, boxY_, targetBoxX_, targetBoxY_;
+  std::vector<std::string> intruderNames_;
+  double boxX_, boxY_, targetBoxX_, targetBoxY_, obstacleTimeout_;
   double hx_, hy_, targetHx_, targetHy_;
   std::mutex mutex_;
   bool haveOwn_ = false;
   Pose2 ownPose_;
   std::map<std::string, Pose2> otherPoses_;
+  std::map<std::string, ros::Time> otherStamps_;
 };
 
 int main(int argc, char** argv)

@@ -55,6 +55,7 @@ public:
     pnh_.param("stall_time", stall_time_, 20.0);
     pnh_.param("stall_min_progress", stall_min_progress_, 0.08);
     pnh_.param("rate", rate_, 20.0);
+    pnh_.param("continuous_goal_updates", continuous_goal_updates_, false);
 
     cmd_pub_ = nh_.advertise<geometry_msgs::Twist>("cmd_vel", 1);
     pose_sub_ = nh_.subscribe("amcl_pose", 1, &NavToPose::poseCb, this);
@@ -66,8 +67,9 @@ public:
     as_.registerPreemptCallback(boost::bind(&NavToPose::actionPreemptCb, this));
     as_.start();
 
-    ROS_INFO("nav_to_pose: ready (max_trans=%.2f max_theta=%.2f)",
-             max_vel_trans_, max_vel_theta_);
+    ROS_INFO("nav_to_pose: ready (max_trans=%.2f max_theta=%.2f continuous=%s)",
+             max_vel_trans_, max_vel_theta_,
+             continuous_goal_updates_ ? "true" : "false");
   }
 
   void spin()
@@ -128,6 +130,11 @@ private:
   {
     if (as_.isActive())
       as_.setPreempted();
+    if (continuous_goal_updates_ && have_goal_ && state_ == TRANSLATE)
+    {
+      updateGoalWhileTranslating(*msg);
+      return;
+    }
     startGoal(*msg);
   }
 
@@ -142,6 +149,18 @@ private:
     stop("preempted");
     if (as_.isActive())
       as_.setPreempted();
+  }
+
+  void updateGoalWhileTranslating(const geometry_msgs::PoseStamped& pose)
+  {
+    goal_x_ = pose.pose.position.x;
+    goal_y_ = pose.pose.position.y;
+    goal_yaw_ = tf2::getYaw(pose.pose.orientation);
+    best_dist_ = have_pose_ ? hypot(goal_x_ - pose_x_, goal_y_ - pose_y_) : -1.0;
+    best_time_ = ros::Time::now();
+    ROS_DEBUG_THROTTLE(1.0,
+                       "nav_to_pose: continuous goal update (%.2f, %.2f)",
+                       goal_x_, goal_y_);
   }
 
   void startGoal(const geometry_msgs::PoseStamped& pose)
@@ -491,6 +510,7 @@ private:
   bool have_odom_ = false;
   bool have_goal_ = false;
   bool rotating_ = true;
+  bool continuous_goal_updates_ = false;
 
   State state_ = IDLE;
   double pose_x_ = 0, pose_y_ = 0, pose_yaw_ = 0;
