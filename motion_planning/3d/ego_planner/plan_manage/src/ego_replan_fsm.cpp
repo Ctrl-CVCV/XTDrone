@@ -11,6 +11,7 @@ namespace ego_planner
     have_target_ = false;
     have_odom_ = false;
     have_recv_pre_agent_ = false;
+    pending_waypoint_valid_ = false;
 
     /*  fsm param  */
     nh.param("fsm/flight_type", target_type_, -1);
@@ -181,15 +182,20 @@ namespace ego_planner
 
       /*** FSM ***/
       if (exec_state_ == WAIT_TARGET)
+      {
         changeFSMExecState(GEN_NEW_TRAJ, "TRIG");
+      }
+      else if (exec_state_ == EXEC_TRAJ)
+      {
+        changeFSMExecState(REPLAN_TRAJ, "TRIG");
+      }
       else
       {
-        while (exec_state_ != EXEC_TRAJ)
-        {
-          ros::spinOnce();
-          ros::Duration(0.001).sleep();
-        }
-        changeFSMExecState(REPLAN_TRAJ, "TRIG");
+        // Dynamic goals can arrive while a previous replan is still running.
+        // end_pt_ and global_data_ were updated above, so the active FSM state
+        // can consume the newest target. Blocking here with spinOnce creates
+        // nested waypoint callbacks and can permanently trap a UAV in replan.
+        ROS_WARN_THROTTLE(1.0, "Dynamic goal updated while FSM is planning");
       }
 
       // visualization_->displayGoalPoint(end_pt_, Eigen::Vector4d(1, 0, 0, 1), 0.3, 0);
@@ -213,12 +219,28 @@ namespace ego_planner
     if (msg->pose.position.z < -0.1)
       return;
 
-    cout << "Triggered!" << endl;
-    // trigger_ = true;
-    init_pt_ = odom_pos_;
-
     Eigen::Vector3d end_wp(msg->pose.position.x, msg->pose.position.y, 1.0);
 
+    // EGO reboundReplan rejects local targets closer than 0.2 m. Ignore such
+    // hold waypoints before they can push the FSM into an endless REPLAN loop.
+    if ((end_wp - odom_pos_).norm() < 0.2)
+    {
+      ROS_WARN_THROTTLE(1.0, "Ignoring EGO waypoint closer than 0.2 m");
+      return;
+    }
+
+    // Updating global_data_ while GEN_NEW_TRAJ/REPLAN_TRAJ is active can
+    // invalidate optimizer state and has caused SIGSEGV under moving goals.
+    // Keep only the newest target and consume it once the FSM is stable.
+    if (exec_state_ != WAIT_TARGET && exec_state_ != EXEC_TRAJ)
+    {
+      pending_waypoint_ = end_wp;
+      pending_waypoint_valid_ = true;
+      ROS_WARN_THROTTLE(1.0, "Dynamic EGO goal queued while FSM is planning");
+      return;
+    }
+
+    init_pt_ = odom_pos_;
     planNextWaypoint(end_wp);
   }
 
@@ -442,6 +464,16 @@ namespace ego_planner
       if (!have_target_)
         cout << "wait for goal or trigger." << endl;
       fsm_num = 0;
+    }
+
+    if (pending_waypoint_valid_ &&
+        (exec_state_ == WAIT_TARGET || exec_state_ == EXEC_TRAJ))
+    {
+      Eigen::Vector3d next_wp = pending_waypoint_;
+      pending_waypoint_valid_ = false;
+      init_pt_ = odom_pos_;
+      ROS_INFO("Applying latest queued dynamic EGO goal");
+      planNextWaypoint(next_wp);
     }
 
     switch (exec_state_)

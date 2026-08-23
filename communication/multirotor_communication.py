@@ -99,12 +99,16 @@ class Communication:
         return target_raw_pose
 
     def cmd_pose_flu_callback(self, msg):
+        if self.hover_flag == 1:
+            return
         self.coordinate_frame = 9
         self.motion_type = 0
         yaw = self.q2yaw(msg.orientation)
         self.target_motion = self.construct_target(x=msg.position.x,y=msg.position.y,z=msg.position.z,yaw=yaw)
  
     def cmd_pose_enu_callback(self, msg):
+        if self.hover_flag == 1:
+            return
         self.coordinate_frame = 1
         self.motion_type = 0
         yaw = self.q2yaw(msg.orientation)
@@ -202,6 +206,8 @@ class Communication:
             self.hover_flag = 1
             self.hover()
         elif self.flightModeService(custom_mode=self.flight_mode).mode_sent:
+            if self.flight_mode == "OFFBOARD":
+                self.hover_flag = 0
             print(self.vehicle_type+'_'+self.vehicle_id+": "+self.flight_mode)
             return True
         else:

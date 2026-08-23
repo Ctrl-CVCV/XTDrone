@@ -73,6 +73,8 @@ namespace ego_planner
 
     Eigen::Vector3d init_pt_, start_pt_, start_vel_, start_acc_, start_yaw_; // start state
     Eigen::Vector3d end_pt_, end_vel_;                                       // goal state
+    Eigen::Vector3d pending_waypoint_;                                      // latest dynamic goal queued while planning
+    bool pending_waypoint_valid_{false};
     Eigen::Vector3d local_target_pt_, local_target_vel_;                     // local target state
     std::vector<Eigen::Vector3d> wps_;
     int current_wp_;

@@ -45,7 +45,7 @@
   <!-- main node -->
   <!-- <node pkg="ego_planner" name="ego_planner_node" type="ego_planner_node" output="screen" launch-prefix="valgrind"> -->
  
-  <node pkg="ego_planner" name="iris_$(arg drone_id)_ego_planner_node" type="ego_planner_node" output="screen">
+  <node pkg="ego_planner" name="iris_$(arg drone_id)_ego_planner_node" type="ego_planner_node" output="screen" respawn="true" respawn_delay="2.0">
   
     <!--<remap from="~odom_world" to="/$(arg odometry_topic)"/>
     <remap from="~planning/bspline" to = "/xtdrone/iris_$(arg drone_id)/planning/bspline"/>
