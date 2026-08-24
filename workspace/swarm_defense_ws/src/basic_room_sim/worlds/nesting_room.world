@@ -65,5 +65,12 @@
       <uri>model://nesting_room</uri>
       <pose>0 0 0 0 0 0</pose>
     </include>
+
+    <!-- Fixed central gimbal camera. Its base sits on the room floor. -->
+    <include>
+      <uri>model://camera_gimbal</uri>
+      <name>camera_gimbal</name>
+      <pose>-0.11576 -0.00882 0.02 0 0 0</pose>
+    </include>
   </world>
 </sdf>

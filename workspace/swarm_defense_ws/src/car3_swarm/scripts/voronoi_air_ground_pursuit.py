@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Bounded-Voronoi pursuit for two ground intruders.
+"""Bounded-Voronoi pursuit for one or two ground intruders.
 
-car0, car1, iris_0 and iris_1 pursue car2 and car3. Each intruder enters by a
-separate door, moves toward the centroid of its active bounded Voronoi cell,
-and is independently captured and removed. Pursuers return home only after
-both intruders have been captured.
+car0, car1, iris_0 and iris_1 pursue car2 in single mode, or car2 and car3 in
+dual mode. Each intruder enters by a separate door, moves toward the centroid
+of its active bounded Voronoi cell, and is independently captured and hidden.
+Pursuers return home after every active intruder has been captured.
 """
 
 import math
@@ -22,8 +22,6 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 PURSUERS = ("car0", "car1", "iris_0", "iris_1")
 UAVS = ("iris_0", "iris_1")
-EVADERS = ("car2", "car3")
-ALL_AGENTS = PURSUERS + EVADERS
 
 
 def clip_polygon_halfplane(polygon, a, b, c, eps=1e-9):
@@ -175,6 +173,23 @@ class VoronoiAirGroundPursuit:
     def __init__(self):
         rospy.init_node("voronoi_air_ground_pursuit")
 
+        requested_mode = str(rospy.get_param("~intruder_mode", "dual")).strip().lower()
+        mode_aliases = {
+            "single": "single",
+            "one": "single",
+            "1": "single",
+            "dual": "dual",
+            "two": "dual",
+            "2": "dual",
+        }
+        if requested_mode not in mode_aliases:
+            raise RuntimeError(
+                "invalid ~intruder_mode=%r; expected single or dual" % requested_mode
+            )
+        self.intruder_mode = mode_aliases[requested_mode]
+        self.evaders = ("car2",) if self.intruder_mode == "single" else ("car2", "car3")
+        self.all_agents = PURSUERS + self.evaders
+
         center_x = rospy.get_param("~boundary_center_x", -0.11576)
         center_y = rospy.get_param("~boundary_center_y", -0.00882)
         side = rospy.get_param("~boundary_side", 6.0)
@@ -190,8 +205,8 @@ class VoronoiAirGroundPursuit:
         self.target_margin = rospy.get_param("~target_margin", 0.20)
         self.goal_period = rospy.get_param("~goal_period", 0.25)
         self.goal_min_change = rospy.get_param("~goal_min_change", 0.05)
-        self.uav_goal_period = rospy.get_param("~uav_goal_period", 1.5)
-        self.uav_goal_min_change = rospy.get_param("~uav_goal_min_change", 0.6)
+        self.uav_goal_period = rospy.get_param("~uav_goal_period", 0.8)
+        self.uav_goal_min_change = rospy.get_param("~uav_goal_min_change", 0.3)
         self.evader_goal_min_change = rospy.get_param("~evader_goal_min_change", 0.08)
         self.evader_lookahead = rospy.get_param("~evader_lookahead", 1.2)
         self.route_tolerance = rospy.get_param("~route_tolerance", 0.35)
@@ -213,7 +228,7 @@ class VoronoiAirGroundPursuit:
         route_config = rospy.get_param("~intruder_routes", route_defaults)
         self.routes = {
             name: [tuple(float(value) for value in waypoint) for waypoint in route_config[name]]
-            for name in EVADERS
+            for name in self.evaders
         }
 
         self.model_poses = {}
@@ -235,7 +250,7 @@ class VoronoiAirGroundPursuit:
         self.mission_started_at = None
         self.all_capture_message = None
         self.capture_time = None
-        self.last_goal_time = {name: 0.0 for name in ALL_AGENTS}
+        self.last_goal_time = {name: 0.0 for name in self.all_agents}
         self.last_return_goal_time = 0.0
         self.uav_return_sent = set()
         self.uav_return_best_distance = {}
@@ -245,7 +260,7 @@ class VoronoiAirGroundPursuit:
         self.last_targets = {}
         self.last_cells = {}
         self.published_targets = {}
-        self.goal_connection_counts = {name: 0 for name in ALL_AGENTS}
+        self.goal_connection_counts = {name: 0 for name in self.all_agents}
 
         self.goal_publishers = {
             name: rospy.Publisher(
@@ -253,7 +268,7 @@ class VoronoiAirGroundPursuit:
                 PoseStamped,
                 queue_size=1,
             )
-            for name in ALL_AGENTS
+            for name in self.all_agents
         }
         self.uav_cmd_publishers = {
             name: rospy.Publisher("/xtdrone/%s/cmd" % name, String, queue_size=1)
@@ -298,19 +313,20 @@ class VoronoiAirGroundPursuit:
         self.timer = rospy.Timer(rospy.Duration(0.2), self._tick)
 
         rospy.loginfo(
-            "Dual-intruder Voronoi pursuit ready: bounds x[%.3f, %.3f] "
+            "%s-intruder Voronoi pursuit ready: bounds x[%.3f, %.3f] "
             "y[%.3f, %.3f], capture=%.2fm, evaders=%s",
+            self.intruder_mode.capitalize(),
             self.bounds[0],
             self.bounds[1],
             self.bounds[2],
             self.bounds[3],
             self.capture_distance,
-            ",".join(EVADERS),
+            ",".join(self.evaders),
         )
 
     def _model_states_cb(self, msg):
         indices = {name: index for index, name in enumerate(msg.name)}
-        for name in ALL_AGENTS:
+        for name in self.all_agents:
             if name in indices:
                 self.model_poses[name] = msg.pose[indices[name]]
             else:
@@ -323,7 +339,7 @@ class VoronoiAirGroundPursuit:
         self.uav_states[name] = msg
 
     def _ready(self):
-        models_ready = all(name in self.model_poses for name in ALL_AGENTS)
+        models_ready = all(name in self.model_poses for name in self.all_agents)
         local_ready = all(name in self.uav_local_poses for name in UAVS)
         flight_ready = all(
             name in self.uav_states
@@ -334,7 +350,7 @@ class VoronoiAirGroundPursuit:
         )
         subscribers_ready = all(
             self.goal_publishers[name].get_num_connections() > 0
-            for name in ALL_AGENTS
+            for name in self.all_agents
         )
         return models_ready and local_ready and flight_ready and subscribers_ready
 
@@ -344,19 +360,21 @@ class VoronoiAirGroundPursuit:
         if not self._ready():
             return TriggerResponse(
                 False,
-                "not ready: need six models, six Nav/EGO goal subscribers, "
-                "and both UAVs OFFBOARD+armed",
+                "not ready: need %d active models and goal subscribers, "
+                "plus both UAVs OFFBOARD+armed" % len(self.all_agents),
             )
         self._begin()
-        return TriggerResponse(True, "dual-intruder Voronoi pursuit started")
+        return TriggerResponse(
+            True, "%s-intruder Voronoi pursuit started" % self.intruder_mode
+        )
 
     def _begin(self):
         self.started = True
-        self.active_evaders = set(EVADERS)
-        self.entered = {name: False for name in EVADERS}
-        self.route_indices = {name: 0 for name in EVADERS}
-        self.route_goal_sent = {name: False for name in EVADERS}
-        self.pursuit_started_at = {name: None for name in EVADERS}
+        self.active_evaders = set(self.evaders)
+        self.entered = {name: False for name in self.evaders}
+        self.route_indices = {name: 0 for name in self.evaders}
+        self.route_goal_sent = {name: False for name in self.evaders}
+        self.pursuit_started_at = {name: None for name in self.evaders}
         self.capture_elapsed = {}
         self.captured_results = {}
         self.uav_capture_priority = []
@@ -373,17 +391,21 @@ class VoronoiAirGroundPursuit:
         self.uav_return_queue = []
         self.uav_return_active = None
         self.published_targets.clear()
-        self.last_goal_time = {name: 0.0 for name in ALL_AGENTS}
+        self.last_goal_time = {name: 0.0 for name in self.all_agents}
         self.goal_connection_counts = {
             name: self.goal_publishers[name].get_num_connections()
-            for name in ALL_AGENTS
+            for name in self.all_agents
         }
         self._set_state(self.APPROACH)
         for name in UAVS:
             self.uav_cmd_publishers[name].publish(String(data="OFFBOARD"))
-        for name in EVADERS:
+        for name in self.evaders:
             self._publish_current_route_goal(name)
-        rospy.loginfo("Two intruders started: car2 uses LEFT door, car3 uses RIGHT door")
+        rospy.loginfo(
+            "%s mode started: active intruders=%s",
+            self.intruder_mode,
+            ",".join(self.evaders),
+        )
 
     def _set_state(self, state):
         if self.state != state:
@@ -462,7 +484,7 @@ class VoronoiAirGroundPursuit:
 
     def _active_inside_evaders(self):
         return tuple(
-            name for name in EVADERS
+            name for name in self.evaders
             if name in self.active_evaders and self.entered.get(name, False)
         )
 
@@ -539,7 +561,7 @@ class VoronoiAirGroundPursuit:
             previous = self.published_targets.get(name)
             if name in UAVS:
                 min_change = self.uav_goal_min_change
-            elif name in EVADERS:
+            elif name in self.evaders:
                 min_change = self.evader_goal_min_change
             else:
                 min_change = self.goal_min_change
@@ -581,7 +603,7 @@ class VoronoiAirGroundPursuit:
             total = max(0.0, (now_ros - self.mission_started_at).to_sec())
             self.all_capture_message = "ALL CAPTURED in %.3f s | %s" % (
                 total,
-                " | ".join(self.captured_results[name] for name in EVADERS),
+                " | ".join(self.captured_results[name] for name in self.evaders),
             )
             self.capture_time = time.monotonic()
             self._set_state(self.CAPTURED)
@@ -599,7 +621,7 @@ class VoronoiAirGroundPursuit:
         hidden = ModelState()
         hidden.model_name = name
         hidden.reference_frame = "world"
-        hidden.pose.position.x = 100.0 + EVADERS.index(name) * 5.0
+        hidden.pose.position.x = 100.0 + self.evaders.index(name) * 5.0
         hidden.pose.position.y = 100.0
         hidden.pose.position.z = -10.0
         hidden.pose.orientation.w = 1.0
@@ -657,7 +679,7 @@ class VoronoiAirGroundPursuit:
             self.uav_cmd_publishers[name].publish(String(data="HOVER"))
         return_order = " -> ".join(self.uav_return_queue)
         rospy.logwarn(
-            "Both intruders removed; ground vehicles return in parallel, "
+            "All active intruders removed; ground vehicles return in parallel, "
             "UAV return order=%s",
             return_order,
         )
@@ -780,7 +802,7 @@ class VoronoiAirGroundPursuit:
 
         if self.state == self.CAPTURED:
             if (
-                all(name in self.deleted_evaders for name in EVADERS)
+                all(name in self.deleted_evaders for name in self.evaders)
                 and time.monotonic() - self.capture_time >= self.return_delay
             ):
                 self._begin_return()
@@ -798,12 +820,12 @@ class VoronoiAirGroundPursuit:
             self._publish_markers()
             return
 
-        for name in EVADERS:
+        for name in self.evaders:
             if name in self.active_evaders and not self.entered[name]:
                 self._advance_intruder_route(name)
 
         newly_entered = []
-        for name in EVADERS:
+        for name in self.evaders:
             if (
                 name in self.active_evaders
                 and not self.entered[name]
@@ -875,7 +897,7 @@ class VoronoiAirGroundPursuit:
             "car2": (1.0, 0.1, 0.1, 0.8),
             "car3": (1.0, 0.5, 0.0, 0.8),
         }
-        for index, name in enumerate(ALL_AGENTS):
+        for index, name in enumerate(self.all_agents):
             cell = self.last_cells.get(name)
             if cell:
                 marker = self._marker(
@@ -886,7 +908,7 @@ class VoronoiAirGroundPursuit:
                     marker.points.append(Point(x=x, y=y, z=0.06))
                 markers.markers.append(marker)
 
-        for index, name in enumerate(ALL_AGENTS):
+        for index, name in enumerate(self.all_agents):
             if name not in self.last_targets:
                 continue
             target = self.last_targets[name]
@@ -899,7 +921,7 @@ class VoronoiAirGroundPursuit:
             marker.scale.x = marker.scale.y = marker.scale.z = 0.18
             markers.markers.append(marker)
 
-        for index, name in enumerate(EVADERS):
+        for index, name in enumerate(self.evaders):
             if name not in self.active_evaders or name not in self.model_poses:
                 continue
             point = self._position_xy(name)
@@ -926,13 +948,15 @@ class VoronoiAirGroundPursuit:
         text.pose.position.z = 0.8
         text.scale.z = 0.28
         active_text = ",".join(
-            name for name in EVADERS if name in self.active_evaders
+            name for name in self.evaders if name in self.active_evaders
         ) or "none"
         text.text = (
-            "Dual Voronoi: %s | captured %d/2 | active %s | capture %.2f m"
+            "%s Voronoi: %s | captured %d/%d | active %s | capture %.2f m"
             % (
+                self.intruder_mode.capitalize(),
                 self.state,
                 len(self.captured_results),
+                len(self.evaders),
                 active_text,
                 self.capture_distance,
             )
@@ -948,4 +972,3 @@ if __name__ == "__main__":
     except (rospy.ROSInterruptException, RuntimeError) as exc:
         rospy.logerr("Voronoi pursuit stopped: %s", exc)
         sys.exit(1)
-

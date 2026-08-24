@@ -1,15 +1,16 @@
 <?xml version="1.0"?>
 <launch>
-  <!-- Dual-intruder run after multi_vehicle.launch, ground truth, ego_swarm_transfer and
+  <!-- Single/dual intruder run after multi_vehicle.launch, ground truth, ego_swarm_transfer and
        uav_offboard_takeoff.  Do not run with multi_car3_mission.launch. -->
+  <arg name="intruder_mode" default="dual"/>
   <arg name="auto_start" default="true"/>
   <arg name="start_delay" default="1.0"/>
   <arg name="capture_distance" default="0.5"/>
   <arg name="boundary_side" default="6.0"/>
   <arg name="uav_altitude" default="1.5"/>
   <arg name="goal_period" default="0.25"/>
-  <arg name="uav_goal_period" default="1.5"/>
-  <arg name="uav_goal_min_change" default="0.6"/>
+  <arg name="uav_goal_period" default="0.8"/>
+  <arg name="uav_goal_min_change" default="0.3"/>
   <arg name="return_delay" default="0.0"/>
   <arg name="return_tolerance" default="0.25"/>
   <arg name="uav_return_tolerance_margin" default="0.15"/>
@@ -23,6 +24,7 @@
     <!-- SDF inner-room center; a 6 m square is the requested Voronoi domain. -->
     <param name="boundary_center_x" value="-0.11576"/>
     <param name="boundary_center_y" value="-0.00882"/>
+    <param name="intruder_mode" value="$(arg intruder_mode)"/>
     <param name="boundary_side" value="$(arg boundary_side)"/>
     <param name="capture_distance" value="$(arg capture_distance)"/>
     <param name="uav_altitude" value="$(arg uav_altitude)"/>

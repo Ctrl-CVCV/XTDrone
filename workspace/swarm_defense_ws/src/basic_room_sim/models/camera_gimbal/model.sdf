@@ -1,0 +1,307 @@
+<sdf version='1.7'>
+  <model name='camera_gimbal'>
+    <static>true</static>
+    <link name='base_link'>
+      <inertial>
+        <pose>0.000139 0.000137 -0.001563 0 -0 0</pose>
+        <mass>0.0790978</mass>
+        <inertia>
+          <ixx>2.68518e-05</ixx>
+          <ixy>-2.05709e-08</ixy>
+          <ixz>-5.74948e-08</ixz>
+          <iyy>3.15512e-05</iyy>
+          <iyz>-9.80534e-08</iyz>
+          <izz>4.73266e-05</izz>
+        </inertia>
+      </inertial>
+      <collision name='base_link_collision'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_004_solid_004.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_collision_1'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_007_solid_007.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_collision_2'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_003_solid_003.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_collision_3'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_006_solid_006.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_collision_4'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_005_solid_005.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_collision_5'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_002_solid_002.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_collision_6'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_001_solid_001.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='base_link_visual'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_004_solid_004.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_visual_1'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_007_solid_007.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_visual_2'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_003_solid_003.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_visual_3'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_006_solid_006.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_visual_4'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_005_solid_005.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_visual_5'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_002_solid_002.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_visual_6'>
+        <pose>-0.004595 0.005183 -1.0195 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_001_solid_001.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='link_YAW_joint' type='revolute'>
+      <pose relative_to='base_link'>0.000208 0.000236 0.0195 0 -0 0</pose>
+      <parent>base_link</parent>
+      <child>link_YAW</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1.57</lower>
+          <upper>1.57</upper>
+          <effort>10</effort>
+          <velocity>5</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='link_YAW'>
+      <pose relative_to='link_YAW_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>-0.006998 -0.014614 0.013633 0 -0 0</pose>
+        <mass>0.0236675</mass>
+        <inertia>
+          <ixx>1.51653e-05</ixx>
+          <ixy>-2.2889e-06</ixy>
+          <ixz>2.80856e-06</ixz>
+          <iyy>1.14811e-05</iyy>
+          <iyz>5.86542e-06</iyz>
+          <izz>7.80669e-06</izz>
+        </inertia>
+      </inertial>
+      <collision name='link_YAW_collision'>
+        <pose>-0.004803 0.004947 -1.039 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_008_solid_008.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='link_YAW_visual'>
+        <pose>-0.004803 0.004947 -1.039 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_008_solid_008.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='link_ROLL_joint' type='revolute'>
+      <pose relative_to='link_YAW'>-0.015352 -0.032061 0.05 1.5708 0 -0.446563</pose>
+      <parent>link_YAW</parent>
+      <child>link_ROLL</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1.57</lower>
+          <upper>1.57</upper>
+          <effort>10</effort>
+          <velocity>5</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='link_ROLL'>
+      <pose relative_to='link_ROLL_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>-6e-06 -6.4e-05 -0.0249 0 -0 0</pose>
+        <mass>0.0518729</mass>
+        <inertia>
+          <ixx>1.07112e-05</ixx>
+          <ixy>3.32842e-07</ixy>
+          <ixz>1.56056e-08</ixz>
+          <iyy>1.39846e-05</iyy>
+          <iyz>1.55055e-07</iyz>
+          <izz>1.20147e-05</izz>
+        </inertia>
+      </inertial>
+      <collision name='link_ROLL_collision'>
+        <pose>-0.006469 -1.089 -0.037935 -1.5708 0.446563 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_009_solid_009.stl</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='link_ROLL_fixed_joint_lump__link_PITCH_collision_1'>
+        <pose>-0.006469 -1.089 -0.037935 -1.5708 0.446563 -0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_010_solid_010.stl</uri>
+          </mesh>
+        </geometry>
+        <surface>
+          <contact>
+            <ode/>
+          </contact>
+          <friction>
+            <ode/>
+          </friction>
+        </surface>
+      </collision>
+      <visual name='link_ROLL_visual'>
+        <pose>-0.006469 -1.089 -0.037935 -1.5708 0.446563 0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_009_solid_009.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='link_ROLL_fixed_joint_lump__link_PITCH_visual_1'>
+        <pose>-0.006469 -1.089 -0.037935 -1.5708 0.446563 -0</pose>
+        <geometry>
+          <mesh>
+            <scale>0.001 0.001 0.001</scale>
+            <uri>meshes/part_010_solid_010.stl</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <sensor name='gimbal_camera' type='camera'>
+        <update_rate>30</update_rate>
+        <camera name='gimbal_camera'>
+          <horizontal_fov>1.0472</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.01</near>
+            <far>100</far>
+          </clip>
+        </camera>
+        <plugin name='camera_controller' filename='libgazebo_ros_camera.so'>
+          <alwaysOn>1</alwaysOn>
+          <updateRate>30.0</updateRate>
+          <cameraName>gimbal_camera</cameraName>
+          <imageTopicName>image_raw</imageTopicName>
+          <cameraInfoTopicName>camera_info</cameraInfoTopicName>
+          <frameName>link_PITCH</frameName>
+          <hackBaseline>0.07</hackBaseline>
+          <distortionK1>0.0</distortionK1>
+          <distortionK2>0.0</distortionK2>
+          <distortionK3>0.0</distortionK3>
+          <distortionT1>0.0</distortionT1>
+          <distortionT2>0.0</distortionT2>
+        </plugin>
+        <pose>0.034824 -0.003505 -0.028267 0.000796 1.36462 1.47048</pose>
+      </sensor>
+    </link>
+    <frame name='link_PITCH_joint' attached_to='link_ROLL'>
+      <pose>0.017412 -0.001753 -0.028267 1.5708 1.36462 1.47048</pose>
+    </frame>
+    <frame name='link_PITCH' attached_to='link_PITCH_joint'/>
+  </model>
+</sdf>

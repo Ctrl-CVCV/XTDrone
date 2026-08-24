@@ -115,9 +115,14 @@ def start_missing_bridges():
 
 
 def publish_hover(statuses):
-    for status in statuses:
-        status.cmd_pub.publish(String(data="HOVER"))
-    rospy.sleep(1.0)
+    # A newly started bridge may not have received local_position on its own
+    # subscriber yet. Repeat HOVER briefly so each bridge can take a valid hold
+    # snapshot without racing its first pose callback.
+    rate = rospy.Rate(10)
+    for _ in range(20):
+        for status in statuses:
+            status.cmd_pub.publish(String(data="HOVER"))
+        rate.sleep()
 
 
 def request_mode(status, timeout):
