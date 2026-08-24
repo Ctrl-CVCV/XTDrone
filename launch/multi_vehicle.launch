@@ -14,6 +14,9 @@
     <arg name="spawn_cars" default="true"/>
     <arg name="start_car_nav" default="true"/>
     <arg name="start_ego" default="false"/>
+    <arg name="use_ego_virtual_boundary" default="true"/>
+    <arg name="ego_boundary_z_max" default="3.0"/>
+    <arg name="ego_boundary_spacing" default="0.3"/>
     <arg name="start_uav_rviz_state" default="true"/>
     <arg name="car0_x" default="2.3"/>
     <arg name="car0_y" default="2.4"/>
@@ -24,26 +27,63 @@
     <arg name="car2_x" default="-6.5"/>
     <arg name="car2_y" default="6.6"/>
     <arg name="car2_yaw" default="0.0"/>
-    <arg name="car2_max_vel_trans" default="0.25"/>
+    <arg name="car2_max_vel_trans" default="3.00"/>
+    <arg name="car3_x" default="6.5"/>
+    <arg name="car3_y" default="-6.5"/>
+    <arg name="car3_yaw" default="3.14159"/>
+    <arg name="car3_max_vel_trans" default="1.50"/>
     <env name="GAZEBO_MODEL_PATH" value="$(find basic_room_sim)/models:$(optenv GAZEBO_MODEL_PATH)"/>
     <!-- Gazebo sim -->
     <include if="$(arg start_gazebo)" file="$(find gazebo_ros)/launch/empty_world.launch">
-        <arg name="gui" value="$(arg gui)"/>
+        <arg name="gui" value="false"/>
         <arg name="world_name" value="$(arg world)"/>
         <arg name="debug" value="$(arg debug)"/>
         <arg name="verbose" value="$(arg verbose)"/>
         <arg name="paused" value="$(arg paused)"/>
     </include>
+    <!-- Start the GUI after all staggered model spawns, then fetch one complete scene. -->
+    <node if="$(arg gui)" name="gazebo_gui" pkg="gazebo_ros" type="gzclient" output="screen"
+          launch-prefix="bash -c 'sleep 23; exec $0 $@' "/>
     <!-- Publish UAV world poses for the shared RViz map frame. -->
     <node if="$(arg start_uav_rviz_state)" pkg="car3_swarm" type="uav_rviz_state.py"
           name="uav_rviz_state" output="screen"/>
-    <!-- car0/car1 defenders and car2 intruder in the same Gazebo instance. -->
+    <!-- car0/car1 defenders and car2/car3 intruders in one Gazebo instance. -->
     <!-- Optional planners reuse the already-spawned cars and aircraft. -->
     <include if="$(arg start_car_nav)" file="$(find car3_swarm)/launch/multi_car3_nav.launch">
         <arg name="start_bringup" value="false"/>
+        <arg name="car0_x" value="$(arg car0_x)"/>
+        <arg name="car0_y" value="$(arg car0_y)"/>
+        <arg name="car0_yaw" value="$(arg car0_yaw)"/>
+        <arg name="car1_x" value="$(arg car1_x)"/>
+        <arg name="car1_y" value="$(arg car1_y)"/>
+        <arg name="car1_yaw" value="$(arg car1_yaw)"/>
+        <arg name="car2_x" value="$(arg car2_x)"/>
+        <arg name="car2_y" value="$(arg car2_y)"/>
+        <arg name="car2_yaw" value="$(arg car2_yaw)"/>
         <arg name="car2_max_vel_trans" value="$(arg car2_max_vel_trans)"/>
+        <arg name="car3_x" value="$(arg car3_x)"/>
+        <arg name="car3_y" value="$(arg car3_y)"/>
+        <arg name="car3_yaw" value="$(arg car3_yaw)"/>
+        <arg name="car3_max_vel_trans" value="$(arg car3_max_vel_trans)"/>
         <arg name="gui" value="false"/>
     </include>
+    <group if="$(arg start_ego)">
+        <!-- Feed four static room-boundary walls into both EGO occupancy maps. -->
+        <node if="$(arg use_ego_virtual_boundary)" pkg="car3_swarm"
+              type="ego_virtual_boundary.py" name="ego_virtual_boundary" output="screen">
+            <rosparam param="uavs">[iris_0, iris_1]</rosparam>
+            <param name="center_x" value="-0.11576"/>
+            <param name="center_y" value="-0.00882"/>
+            <param name="side" value="6.0"/>
+            <param name="z_min" value="0.0"/>
+            <param name="z_max" value="$(arg ego_boundary_z_max)"/>
+            <param name="spacing" value="$(arg ego_boundary_spacing)"/>
+            <param name="monitor_rate" value="2.0"/>
+            <param name="stable_samples" value="3"/>
+            <param name="stable_tolerance" value="0.05"/>
+            <param name="frame_id" value="world"/>
+        </node>
+    </group>
     <include if="$(arg start_ego)" file="$(find ego_planner)/launch/multi_uav.launch"/>
     <group if="$(arg spawn_cars)">
         <include file="$(find car3_swarm)/launch/car_spawn.launch">
@@ -51,18 +91,28 @@
             <arg name="x" value="$(arg car0_x)"/>
             <arg name="y" value="$(arg car0_y)"/>
             <arg name="yaw" value="$(arg car0_yaw)"/>
+            <arg name="spawn_delay" value="3"/>
         </include>
         <include file="$(find car3_swarm)/launch/car_spawn.launch">
             <arg name="car" value="car1"/>
             <arg name="x" value="$(arg car1_x)"/>
             <arg name="y" value="$(arg car1_y)"/>
             <arg name="yaw" value="$(arg car1_yaw)"/>
+            <arg name="spawn_delay" value="6"/>
         </include>
         <include file="$(find car3_swarm)/launch/car_spawn.launch">
             <arg name="car" value="car2"/>
             <arg name="x" value="$(arg car2_x)"/>
             <arg name="y" value="$(arg car2_y)"/>
             <arg name="yaw" value="$(arg car2_yaw)"/>
+            <arg name="spawn_delay" value="9"/>
+        </include>
+        <include file="$(find car3_swarm)/launch/car_spawn.launch">
+            <arg name="car" value="car3"/>
+            <arg name="x" value="$(arg car3_x)"/>
+            <arg name="y" value="$(arg car3_y)"/>
+            <arg name="yaw" value="$(arg car3_yaw)"/>
+            <arg name="spawn_delay" value="12"/>
         </include>
     </group>
      <!-- iris_0 -->
@@ -80,9 +130,10 @@
             <arg name="P" value="0"/>
             <arg name="Y" value="0"/>
             <arg name="vehicle" value="iris"/>
-            <arg name="sdf" value="iris_stereo_camera"/>
+            <arg name="sdf" value="iris"/>
             <arg name="mavlink_udp_port" value="18570"/>
             <arg name="mavlink_tcp_port" value="4560"/>
+            <arg name="spawn_delay" value="15"/>
             <arg name="ID" value="$(arg ID)"/>
             <arg name="ID_in_group" value="$(arg ID_in_group)"/>
         </include>
@@ -109,9 +160,10 @@
             <arg name="P" value="0"/>
             <arg name="Y" value="0"/>
             <arg name="vehicle" value="iris"/>
-            <arg name="sdf" value="iris_stereo_camera"/>
+            <arg name="sdf" value="iris"/>
             <arg name="mavlink_udp_port" value="18571"/>
             <arg name="mavlink_tcp_port" value="4561"/>
+            <arg name="spawn_delay" value="19"/>
             <arg name="ID" value="$(arg ID)"/>
             <arg name="ID_in_group" value="$(arg ID_in_group)"/>
         </include>

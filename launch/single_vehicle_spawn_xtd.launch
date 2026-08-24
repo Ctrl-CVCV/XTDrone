@@ -9,6 +9,7 @@
     <arg name="R" default="0"/>
     <arg name="P" default="0"/>
     <arg name="Y" default="0"/>
+    <arg name="spawn_delay" default="0"/>
     <!-- vehcile model and config -->
     <arg name="est" default="ekf2"/>
     <arg name="vehicle" default="plane"/>
@@ -33,5 +34,5 @@
     <node name="sitl_$(arg ID)" pkg="px4" type="px4" output="screen" args="$(find px4)/build/px4_sitl_default/etc -s etc/init.d-posix/rcS -i $(arg ID) -w sitl_$(arg vehicle)_$(arg ID) $(arg px4_command_arg1)">
     </node>
     <!-- spawn vehicle -->
-    <node name="$(arg vehicle)_$(arg ID)_spawn" output="screen" pkg="gazebo_ros" type="spawn_model" args="-sdf -param model_description -model $(arg vehicle)_$(arg ID_in_group) -x $(arg x) -y $(arg y) -z $(arg z) -R $(arg R) -P $(arg P) -Y $(arg Y)"/>
+    <node name="$(arg vehicle)_$(arg ID)_spawn" output="screen" pkg="gazebo_ros" type="spawn_model" launch-prefix="bash -c 'sleep $(arg spawn_delay); exec $0 $@' " args="-sdf -param model_description -model $(arg vehicle)_$(arg ID_in_group) -x $(arg x) -y $(arg y) -z $(arg z) -R $(arg R) -P $(arg P) -Y $(arg Y)"/>
 </launch>
