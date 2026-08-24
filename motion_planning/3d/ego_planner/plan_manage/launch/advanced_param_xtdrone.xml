@@ -64,7 +64,7 @@
   <remap from="~planning/broadcast_bspline_from_planner" to = "/broadcast_bspline"/>
   <remap from="~planning/broadcast_bspline_to_planner" to = "/broadcast_bspline"/>
   <remap from="/move_base_simple/goal" to = "/iris_$(arg drone_id)/move_base_simple/goal"/>
-  <remap from="~grid_map/odom" to="/xtdrone/iris_$(arg drone_id)/$(arg odometry_topic)"/>
+  <remap from="~grid_map/odom" to="/iris_$(arg drone_id)/$(arg odometry_topic)"/>
   <remap from="~grid_map/cloud" to="/iris_$(arg drone_id)/$(arg cloud_topic)"/>
   <remap from="~grid_map/pose"  to = "/iris_$(arg drone_id)/$(arg camera_pose_topic)"/> 
   <remap from="~grid_map/depth" to = "/iris_$(arg drone_id)/$(arg depth_topic)"/>

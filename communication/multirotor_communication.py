@@ -196,6 +196,8 @@ class Communication:
             return False
 
     def hover(self):
+        if self.current_position is None:
+            return
         self.coordinate_frame = 1
         self.motion_type = 0
         self.target_motion = self.construct_target(x=self.current_position.x,y=self.current_position.y,z=self.current_position.z,yaw=self.current_yaw)
