@@ -88,3 +88,22 @@ sensing/slam/vslam/ORB_SLAM3/Vocabulary/
 
 # --- Specific build dirs (already tracked, now ignored) ---
 coordination/fixed_wing_formation_control/build/
+
+# --- LaTeX report ---
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.run.xml
+*.synctex.gz
+*.toc
+*.xdv
+/main.pdf
+
+# Keep the shared LaTeX Workshop configuration.
+!.vscode/
+.vscode/*
+!.vscode/settings.json

@@ -1,0 +1,50 @@
+% !TeX program = xelatex
+% !TeX encoding = UTF-8
+\documentclass[UTF8,zihao=-4,fontset=fandol]{ctexart}
+
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+
+\graphicspath{{figures/}}
+\setlist{nosep}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=green!40!black,
+  urlcolor=cyan!50!black,
+  pdftitle={基于Voronoi地图的多智能体封控围捕系统设计},
+  pdfauthor={郑信哲、刘韩旭、黄进一、曹向、徐书浩、黄原野}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{基于Voronoi地图的多智能体封控围捕系统设计}
+\fancyhead[R]{\thepage}
+\setlength{\headheight}{15pt}
+
+\title{\heiti XeLaTeX 报告模板}
+\author{作者姓名}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\clearpage
+
+\input{sections/introduction}
+\input{sections/content}
+\input{sections/conclusion}
+
+% 如需参考文献，请在正文中使用 \cite{knuth1984texbook}，并取消以下注释。
+% \bibliographystyle{plain}
+% \bibliography{references}
+
+\end{document}

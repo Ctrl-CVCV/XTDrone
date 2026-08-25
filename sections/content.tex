@@ -1,0 +1,42 @@
+\section{正文示例}
+
+\subsection{数学公式}
+
+行内公式示例为 $E = mc^2$。编号公式可以写成：
+
+\begin{equation}
+  f(x) = \int_{-\infty}^{\infty} \hat{f}(\xi)
+  e^{2\pi i x\xi}\,\mathrm{d}\xi.
+  \label{eq:fourier}
+\end{equation}
+
+公式~\eqref{eq:fourier} 可以通过标签在正文中引用。
+
+\subsection{表格}
+
+\begin{table}[htbp]
+  \centering
+  \caption{示例数据}
+  \label{tab:example}
+  \begin{tabular}{lcc}
+    \toprule
+    项目 & 数值 A & 数值 B \\
+    \midrule
+    样本一 & 12 & 18 \\
+    样本二 & 20 & 24 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{图片}
+
+将图片放入 \texttt{figures} 目录后，可以使用下面的结构插入：
+
+\begin{verbatim}
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{example.png}
+  \caption{示例图片}
+  \label{fig:example}
+\end{figure}
+\end{verbatim}
