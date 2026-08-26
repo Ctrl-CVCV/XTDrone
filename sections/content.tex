@@ -1,10 +1,84 @@
+\section{任务场景建模}
+
+\subsection{封控区域}
+
+任务场景设置为一个尺寸为 $6\,\mathrm{m}\times6\,\mathrm{m}$ 的封闭方形区域。区域地面分布有少量障碍物，四周由墙体封闭，且每侧墙体均设置一扇可供目标进出的门。
+
+\subsection{智能体组成与初始位置}
+
+封控系统由一台光电云台、两架无人机和一辆麦克纳姆轮式移动机器人（以下简称“麦轮车”）组成。各智能体的初始部署如下：
+
+\begin{itemize}
+    \item 光电云台固定安装于区域中心，通过持续旋转实现对区域的扫描与监视；
+    \item 两架无人机和一辆麦轮车分散部署于区域角落附近，负责协同巡检与目标围捕。
+\end{itemize}
+
+\subsection{封控智能体参数}
+
+各类封控智能体的主要参数如下：
+
+\begin{enumerate}
+    \item \textbf{光电云台}
+    \begin{itemize}
+        \item 姿态转动轴：横滚轴（Roll）、俯仰轴（Pitch）和偏航轴（Yaw）；
+        \item 各转动轴的最大转动速度；
+        \item 视场范围及目标探测距离；
+        \item 在仿真环境中，采用YOLO目标检测算法识别入侵目标。
+    \end{itemize}
+
+    \item \textbf{无人机}
+    \begin{itemize}
+        \item 最大线速度与最大角速度；
+        \item 当前线速度与当前角速度；
+        \item 感知范围；
+        \item 捕获半径 $r_1$。
+    \end{itemize}
+
+    \item \textbf{麦轮车}
+    \begin{itemize}
+        \item 最大线速度与最大角速度；
+        \item 当前线速度与当前角速度；
+        \item 感知范围；
+        \item 捕获半径 $r_2$。
+    \end{itemize}
+\end{enumerate}
+
+\subsection{智能体工作模式}
+
+封控智能体具有以下两种工作模式：
+
+\begin{enumerate}
+    \item \textbf{巡检模式：}在未发现入侵目标时，各智能体按照预设巡检策略在责任区域内执行巡逻和搜索任务，光电云台持续扫描封控区域。
+    \item \textbf{捕获模式：}任一智能体发现入侵目标后，系统将目标信息共享至其他智能体，各智能体随即由巡检模式切换至捕获模式，并协同完成目标追踪与围捕。
+\end{enumerate}
+
+\subsection{入侵目标及其任务}
+入侵目标从封控区域任意一侧的门进入，并以规避封控智能体的探测和围捕为主要任务。在运动过程中，入侵目标利用EGO-Planner进行动态路径规划，根据环境障碍物及封控智能体的实时位置在线调整运动路径，尽可能延长其在区域内未被捕获的时间。
+入侵目标可以是无人机或无人车。其主要运动参数包括：
+
+\begin{itemize}
+    \item 最大线速度与最大角速度；
+    \item 当前线速度与当前角速度。
+\end{itemize}
 
 
+\subsection{协同封控流程}
+
+系统的协同封控流程如下：
+
+\begin{enumerate}
+    \item 光电云台、无人机和麦轮车按照各自的巡检策略执行区域搜索任务；
+    \item 当入侵目标进入任一智能体的感知范围并被成功识别后，该智能体立即将目标的位置、速度等状态信息发送至其他智能体；
+    \item 所有封控智能体同时切换至捕获模式，并根据目标状态和环境信息进行协同围捕；
+    \item 无人机与麦轮车分别对入侵目标进行追踪、拦截和包围；
+    \item 当入侵目标与任一无人机之间的距离不大于 $r_1$，或与麦轮车之间的距离不大于 $r_2$ 时，判定该目标被成功捕获，围捕任务结束。
+\end{enumerate}
 \section{无人机状态估计：FAST-LIO2 激光-惯性紧耦合里程计与动捕系统融合}
 
 公式~\eqref{eq:fourier} 可以通过标签在正文中引用。
 
 \section{建图、路径规划与轨迹优化：EGO-Swarm}
+
 
 
 \section{基于PID的无人机姿态与位置控制：PX4-Ctrl}
@@ -18,11 +92,14 @@
 \section{基于Voronoi地图的多智能体封控围捕算法Intercepting Rogue Robots}
 
 \section{仿真验证实现}
+
 \subsection{仿真项目概述}
+
 \subsection{系统架构图}
 \subsection{核心代码解析}
 \subsection{仿真验证}
 \subsection{代码仓库}
+https://github.com/Ctrl-CVCV/XTDrone/tree/XTDrone
 \section{实机平台及验证}
 
 \subsection{实机代码}
