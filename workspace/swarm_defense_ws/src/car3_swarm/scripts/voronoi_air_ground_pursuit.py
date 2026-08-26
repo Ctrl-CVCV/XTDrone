@@ -167,6 +167,7 @@ class VoronoiAirGroundPursuit:
     APPROACH = "APPROACH"
     PURSUIT = "PURSUIT"
     CAPTURED = "CAPTURED"
+    HOLDING = "HOLDING"
     RETURNING = "RETURNING"
     RETURNED = "RETURNED"
 
@@ -252,6 +253,7 @@ class VoronoiAirGroundPursuit:
         self.capture_time = None
         self.last_goal_time = {name: 0.0 for name in self.all_agents}
         self.last_return_goal_time = 0.0
+        self.last_hold_goal_time = 0.0
         self.uav_return_sent = set()
         self.uav_return_best_distance = {}
         self.uav_return_progress_time = {}
@@ -609,7 +611,7 @@ class VoronoiAirGroundPursuit:
             self._set_state(self.CAPTURED)
             self.result_publisher.publish(String(self.all_capture_message))
             for name in ("car0", "car1"):
-                self._publish_world_goal(name, self._position_xy(name))
+                self._stop_car(name)
             rospy.logwarn(self.all_capture_message)
         else:
             self._publish_pursuit_goals(force=True)
@@ -640,6 +642,37 @@ class VoronoiAirGroundPursuit:
         for name in self.captured_results:
             if name not in self.deleted_evaders:
                 self._delete_evader(name)
+
+    def _current_yaw(self, name):
+        q = self.model_poses[name].orientation
+        return math.atan2(
+            2.0 * (q.w * q.z + q.x * q.y),
+            1.0 - 2.0 * (q.y * q.y + q.z * q.z),
+        )
+
+    def _stop_car(self, name):
+        current = self._position_xy(name)
+        self.goal_publishers[name].publish(
+            self._make_goal(current[0], current[1], 0.0, self._current_yaw(name))
+        )
+
+    def _begin_hold(self):
+        self._set_state(self.HOLDING)
+        self.last_hold_goal_time = 0.0
+        for name in UAVS:
+            self.uav_cmd_publishers[name].publish(String(data="HOVER"))
+        self._publish_hold_goals(force=True)
+        rospy.logwarn(
+            "All intruders captured; holding positions (cars stopped, UAVs hovering)"
+        )
+
+    def _publish_hold_goals(self, force=False):
+        now = time.monotonic()
+        if not force and now - self.last_hold_goal_time < self.return_goal_period:
+            return
+        for name in ("car0", "car1"):
+            self._stop_car(name)
+        self.last_hold_goal_time = now
 
     def _begin_return(self):
         self._set_state(self.RETURNING)
@@ -805,7 +838,12 @@ class VoronoiAirGroundPursuit:
                 all(name in self.deleted_evaders for name in self.evaders)
                 and time.monotonic() - self.capture_time >= self.return_delay
             ):
-                self._begin_return()
+                self._begin_hold()
+            self._publish_markers()
+            return
+
+        if self.state == self.HOLDING:
+            self._publish_hold_goals()
             self._publish_markers()
             return
 

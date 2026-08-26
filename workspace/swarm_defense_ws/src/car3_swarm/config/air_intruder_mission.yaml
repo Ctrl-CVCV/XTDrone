@@ -1,0 +1,104 @@
+# 空中入侵无人机围捕任务参数（WAITING -> TAKEOFF -> STAGING -> INTRUDER_APPROACH
+#                                -> AIR_INTRUSION_DETECTED -> PURSUIT -> ENCIRCLED
+#                                -> CAPTURED / ESCAPED）
+# 坐标均为世界系；内墙/门数值取自 basic_room_sim/models/nesting_room/model.sdf 实测
+# （world include 已将模型位姿覆盖为 0，模型局部坐标即世界坐标）。
+
+# ---- UAV 统一恒高 ----
+uav:
+  fixed_altitude: 1.33    # H_f：恒高（用户要求再降至 2.0 的三分之二 ≈1.33；低于内墙高 3.0）
+  wall_height: 3.0        # 真实内墙高度 H_wall（虚拟墙 z_max 与之匹配）
+
+# ---- iris_2 出生位置 ----
+intruder:
+  spawn_mode: fixed       # 用户要求固定出生，不再随机
+  fixed_corner: CORNER_1  # 固定左下角（西南角）外墙 (-5.0, -5.0)
+  # 外墙四个角中选定的两个可用角落（Gazebo 世界坐标 + 朝向 yaw）：
+  # CORNER_0 = 东北角，CORNER_1 = 西南角；均向内缩安全余量，不在墙体几何角点上。
+  # 朝向 yaw 固定为 -pi/2（朝 DOWN 门/南，以门命名为基准；与固定朝向桥配合，出生起不转向）
+  spawn_corner_0: [5.0, 5.0, -1.5708]
+  spawn_corner_1: [-5.0, -5.0, -1.5708]
+  # 入侵方向：UP | DOWN | LEFT | RIGHT；第一版固定，跑通后随机
+  entry_mode: fixed       # fixed | random
+  entry_side: UP          # CORNER_0（东北角）相邻方向：UP | RIGHT（LEFT/DOWN 需走廊路由 Phase 9）
+  random_seed: 0          # seed>0 可复现随机序列；0=时间种子
+  approach_offset: 1.2    # 内墙外侧待机点距墙段中心线的距离 (m)
+  inside_offset: 1.2      # 穿墙后内点距墙段中心线的距离 (m)
+  entry_arrive: 0.4       # 阶段到位判定半径 (m)
+  # 到达外墙待机点后的"真正停稳"判定：水平速度持续低于 entry_speed_eps 达 entry_speed_hold 秒
+  # 且至少停留 approach_settle 秒才发进内部目标。否则 EGO 会带着到达方向横向动量重规划入场
+  # 轨迹，偏出门洞（CORNER_0 西偏 UP / CORNER_1 东偏 DOWN，实测 1m+）撞门框。
+  approach_settle: 1.2    # 待机点最短停留时间 (s)
+  entry_speed_eps: 0.1    # 进内部目标前允许的最大水平速度 (m/s)
+  entry_speed_hold: 0.4   # 速度需持续低于 eps 的时长 (s)
+  entry_speed_cap: 6.0    # 最迟推进上限：待机超过该时长则强制进入 (s)，防悬停抖动永不达标
+  # 门洞中心线预对齐点距墙的距离增量：预对齐点 = 门中心 + 法向*(approach_offset+approach_pre_extra)。
+  # 令"预对齐点->待机点"末段沿门中心线进场，消除 EGO 重规划携带的到达方向横向偏置。
+  approach_pre_extra: 2.0 # (m)
+  over_wall_check_z: 3.3  # 飞越判定：跨越点最小高度需 > 该值（> 墙高 3.0）
+  evasion_min_speed: 0.5  # 逃逸方向判定：速度低于该值退化为元胞质心方向 (m/s)
+  evasion_cell_margin: 0.1  # Voronoi 逃逸目标相对内区边界的收缩余量 (m)
+
+# ---- 围捕阵型（第 9/10/11 节）----
+formation:
+  uav_forward_offset: 1.5   # 两架防御 UAV 在逃逸方向前方的距离 d_uf
+  uav_lateral_offset: 2.0   # 两架防御 UAV 横向展开距离 d_us
+  ugv_rear_offset: 1.2      # 两辆 UGV 在投影后方的距离 d_gf
+  ugv_lateral_offset: 2.0   # 两辆 UGV 横向展开距离 d_gs
+  ugv_margin: 0.4           # UGV 阵型点相对内区边界的收缩余量 (m)
+  uav_margin: 0.8           # UAV 目标相对内区边界的收缩余量 (m)；H_f=1.33 低于 3m 墙，禁止越墙封口。
+                          # 0.8 较 0.5 更安全：CORNER_0 复测中 iris_0 贴墙(0.39m)下降，目标贴 0.5 余量时 EGO 过冲
+
+# ---- 捕获判定（第 14 节）----
+capture:
+  air_capture_radius: 1.8   # R_c：两架防御 UAV 均须到入侵 UAV 的 XY 距离 < 该值（用户 2026-08-26：2.0→1.8）
+  ground_projection_radius: 0.5  # R_g：两辆 UGV 到入侵 UAV 地面投影的距离 < 该值；tight 阵型小车贴机 ±0.3m，0.5 与之匹配，
+                                 #     确保捕获触发时小车已在入侵机正下方（用户 2026-08-26：直接收在机下）
+  hold_time: 2.0            # T_hold：以上条件需持续保持的时间 (s)
+  encircle_min_area: 0.5    # 凸包面积下限，避免四追捕者近共线
+  encircle_margin: 0.3      # 包围判定边界余量：iris_2 距凸包边界 < 该值即算包围，防边界振荡清零捕获计时
+
+# ---- 门封堵（iris_2 逼近边界时，较远一架防御 UAV 调到其与边界之间的"影子"位，
+#      挖掉正对侧的 Voronoi 元胞，把逃逸质心拉回内区并放慢，避免冲向门口）----
+gate_seal:
+  enabled: true
+  trigger_dist: 1.8   # iris_2 距某条边界线小于该值触发封堵 (m)
+  inset: 1.0          # 堵头 UAV 自 iris_2 沿指向边界方向推进的距离 (m)，不越过边界线
+  dwell: 1.5          # 封堵侧承诺停留时间 (s)：期间不随 iris_2 摆动切换侧，防堵头目标大跳变
+  heading_cos: 0.3    # 逃逸方向与边界外法向点积下限，只有朝边界飞才封堵，避免无谓调位
+
+# ---- 规划发布（第 18 节：不要高频刷新 EGO goal）----
+planning:
+  tactical_rate: 15.0       # 战术/判定频率 (Hz)
+  goal_publish_rate: 3.0    # 实际目标发布频率 (Hz)（2~5Hz）
+  goal_change_threshold: 0.3  # 目标位移达到该值才重新发送 (m)
+  re_goal_interval: 5.0     # 目标未变化但智能体未到位时的周期重发 (s)
+
+fsm:
+  intrusion_debounce: 0.3   # outside->inside 去抖 (s)，之后触发 AIR_INTRUSION_DETECTED
+  staging_wait: 1.0         # STAGING 阶段每单位停留确认时间
+  auto_start: true          # 就绪后自动开始任务
+  start_delay: 1.0          # 就绪后附加延迟 (s)
+  encircle_fallback_delay: 1.5  # ENCIRCLED 丢失包围（enc 假）持续该值后回退 PURSUIT 重新封堵 (s)
+
+# ---- 内墙内边包围盒（墙厚 0.15 的净内表面），入侵/保护区域判定用 ----
+inner_region:
+  x_min: -3.091
+  x_max: 2.859
+  y_min: -2.984
+  y_max: 2.966
+
+# ---- 内墙墙段中心线（世界系，墙厚 0.15）----
+# 四扇门中心（墙段间隙 1.2m 的中心，SDF 实测），与地面任务共用
+gate_positions:
+  UP:    [-0.116, 3.041]
+  DOWN:  [-0.116, -3.059]
+  LEFT:  [-3.166, -0.009]
+  RIGHT: [2.934, -0.009]
+
+# 门中心指向内墙内部的单位法向（门外侧点 = 门中心 - n * offset）
+gate_normals:
+  UP:    [0.0, -1.0]
+  DOWN:  [0.0, 1.0]
+  LEFT:  [1.0, 0.0]
+  RIGHT: [-1.0, 0.0]

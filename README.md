@@ -10,6 +10,9 @@ car3 麦轮（mecanum）小车在 Gazebo 中的仿真，含**单车**全链路�
 
 多车：三车（car0/car1 防守 + car2 入侵）在 nesting_room 四门套间中的
      巡检—入侵—区域封控—协同围捕 一体化闭环任务（见第四节）
+
+空地：两车两机（car0/car1 麦轮车 + iris_0/iris_1 防御无人机）围捕入侵无人机
+     iris_2：Voronoi 逃逸 + 阵型封堵 + 凸包包围 + 捕获判定（见第五节）
 ```
 
 Gazebo / RViz 直连宿主 X11（NVIDIA GPU 渲染），一键启动脚本见下文。
@@ -43,12 +46,18 @@ Gazebo / RViz 直连宿主 X11（NVIDIA GPU 渲染），一键启动脚本见下
 │   │       │                        #   三阶段 nav_to_pose / 麦轮辊子抓地力 Gazebo 插件
 │   │       └── car3_swarm/          # 多车协同任务核心包
 │   │           ├── launch/          # multi_car3_mission.launch 一体化任务入口
+│   │           │                    #   air_intruder_pursuit.launch 空中入侵围捕
 │   │           ├── config/          # mission_params.yaml 任务参数（单一数据源）
+│   │           │                    #   air_intruder_mission.yaml 空中入侵围捕参数
 │   │           ├── scripts/         # patrol_node / intruder_node / mission_manager
-│   │           │                    #   键盘遥控 / 航点导航 / 轨迹记录工具
+│   │           │                    #   air_intruder_pursuit / uav_offboard_takeoff /
+│   │           │                    #   ego_virtual_boundary / pick_spawn_corner
 │   │           ├── src/             # C++：car_state_broadcaster / virtual_obstacle
 │   │           └── *.md             # 使用 / 巡检模式 / 一体化任务 等开发文档
 │   ├── car3_demo.sh                 # 一键全链路演示（Gazebo + 导航 + RViz）
+│   ├── launch_air_intruder_sim.sh   # 空中入侵围捕：仿真启动（清理 + 选角 + launch）
+│   ├── run_air_intruder_sim.sh      # 空中入侵围捕：一键运行（含起飞 + 围捕节点）
+│   ├── 两车两机围捕一机_实现说明.md    # 空中入侵围捕实现说明（核心文件 / 算法 / 用法）
 │   ├── mission_demo.sh              # 多车一体化任务一键演示（每轮随机换门、可多轮）
 │   ├── mission_demo_up.sh           # 单门入侵演示：上门（UP）
 │   ├── mission_demo_down.sh         # 单门入侵演示：下门（DOWN）
@@ -206,7 +215,70 @@ docker exec -it xtdrone-dev bash /workspace/mission_demo_right.sh   # 右门 RIG
 
 完整设计见 `car3_swarm/一体化任务文档.md`。
 
-## 五、car3 模型集成方法
+## 五、运行空中入侵无人机围捕（两车两机围捕一机）
+
+**两车两机**（car0/car1 两辆麦轮车 + iris_0/iris_1 两架防御无人机）围捕一架入侵无人机
+**iris_2**：iris_2 从外墙角出生（默认固定左下角 CORNER_1）→ 恒高 H_f=1.33m 飞越 3m 内墙 →
+触发入侵警报 → 按 Voronoi 元胞质心逃逸；防御方按逃逸方向组阵，
+边界门封堵 + 凸包包围收缩逼近捕获条件 → CAPTURED / ESCAPED。
+
+### 1. 一键运行（推荐）
+
+```bash
+docker exec -it xtdrone-dev-gpu bash /home/dev/XTDrone-single-car/workspace/run_air_intruder_sim.sh
+```
+
+自动串起：清理残留 → 启动 multi_vehicle.launch（iris_2 固定左下角出生）→ 等 gazebo 世界 →
+起 get_local_pose / ego_swarm_transfer / 3 通信桥 → 等 MAVROS connected → 三机起飞到 1.33m →
+起 `air_intruder_pursuit` 围捕节点 → 打印监视方法。进程挂后台，脚本返回后任务自动继续。
+
+可选参数：`--corner CORNER_0|CORNER_1`（默认 CORNER_1）、`--alt 高度`（默认 1.33）、`--headless`。
+
+### 2. 手动分步
+
+```bash
+# 启动仿真（选角，默认 fixed CORNER_1）
+docker exec -it xtdrone-dev-gpu bash /home/dev/XTDrone-single-car/workspace/launch_air_intruder_sim.sh --gui
+
+# XTDrone 支持栈 + 3 通信桥（容器内）
+python3 /home/dev/XTDrone/sensing/pose_ground_truth/get_local_pose.py iris 3 &
+python3 /home/dev/XTDrone/motion_planning/3d/ego_swarm_transfer.py iris 3 &
+for id in 0 1 2; do python3 /home/dev/XTDrone/communication/multirotor_communication.py iris $id & done
+
+# 三机起飞（含 MPC_LAND_CRWL 起飞修复）
+python3 /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/src/car3_swarm/scripts/uav_offboard_takeoff.py \
+    --altitude 1.33 --timeout 120 --no-start-bridge
+
+# 启动围捕节点
+source /home/dev/car3_env.sh && roslaunch car3_swarm air_intruder_pursuit.launch
+```
+
+### 3. 任务状态机（/air_intruder/pursuit/state）
+
+| 状态 | 含义 |
+|---|---|
+| STAGING | 防御 UAV 保持出生位，iris_2 飞往出生角 |
+| INTRUDER_APPROACH | iris_2 预对齐 → 墙外停稳 → 穿门洞进入内区 |
+| AIR_INTRUSION_DETECTED | iris_2 XY 越过内区边界（去抖 0.3s） |
+| PURSUIT | 按逃逸方向布宽松阵型 + 边界门封堵 |
+| ENCIRCLED | 四追捕者凸包包围，收缩紧阵型逼近捕获 |
+| CAPTURED / ESCAPED | 捕获（双 UAV 均 < 1.8m 且双 UGV < 0.5m 持续 2s）/ 逃逸 |
+
+### 4. 关键文件
+
+| 文件 | 作用 |
+|---|---|
+| `car3_swarm/scripts/air_intruder_pursuit.py` | 围捕 FSM 主节点（Voronoi 逃逸 / 阵型 / 门封堵 / 捕获判定） |
+| `car3_swarm/config/air_intruder_mission.yaml` | 全部任务参数（恒高 / 阵型 / 捕获半径 / 内区） |
+| `car3_swarm/scripts/uav_offboard_takeoff.py` | 三机 OFFBOARD / ARM / 起飞 + MPC_LAND_CRWL 起飞修复 |
+| `car3_swarm/scripts/ego_virtual_boundary.py` | 内墙虚拟边界点云（四面各开 1.2m 门洞缺口，供 EGO 避障） |
+| `car3_swarm/scripts/pick_spawn_corner.py` | iris_2 出生角选择/验证 |
+| `launch_air_intruder_sim.sh` / `run_air_intruder_sim.sh` | 仿真启动 / 一键运行脚本 |
+| `两车两机围捕一机_实现说明.md` | 完整实现说明（系统链路 / 核心文件 / 算法 / 用法） |
+
+完整设计见 `workspace/两车两机围捕一机_实现说明.md`。
+
+## 六、car3 模型集成方法
 
 car3 麦轮车模型在仿真镜像中的集成（位于容器 `/home/dev` 下，属镜像层、非宿主挂载）：
 
@@ -223,7 +295,7 @@ car3 麦轮车模型在仿真镜像中的集成（位于容器 `/home/dev` 下�
 - **多车仿真实际使用路径**：`car3_control/urdf/car3.xacro` 中以 `package://car3/meshes/*.STL` 引用网格（共 7 处），`car_spawn.launch` 通过 `spawn_model -urdf` 载入；**多车仿真只依赖 car3 包的 STL 网格，不经过 car3.sdf**（SDF 仅供 PX4 单机/XTDrone 常规流程使用）。
 - 部署到新环境时，把仓库 `car3_control/meshes/` 同步进容器 `car3` 包对应目录即可生效；如需仓库网格直接生效，可把 xacro 的 `package://car3/meshes/` 改为 `package://car3_control/meshes/`。
 
-## 六、核心算法说明
+## 七、核心算法说明
 
 三阶段 nav_to_pose（`car3_control/src/nav_to_pose_node.cpp`，动作接口 `/move_base`）：
 
@@ -235,7 +307,7 @@ car3 麦轮车模型在仿真镜像中的集成（位于容器 `/home/dev` 下�
 所有单点判定均带容差滞回（进入/退出半径不同），避免状态抖动。
 完整设计见 `car3_全链路开发报告.md`。
 
-## 七、运行示意图
+## 八、运行示意图
 
 **巡检**：car0（NE 角）守 下门→左门、car1（SW 角）守 上门→右门，按规划门序在
 各自驻留点往返摆扫，持续覆盖全部四门，发现入侵立即上报任务状态机。

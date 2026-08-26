@@ -8,6 +8,7 @@
            car3 intruder  (6.5, -6.5)  yaw 3.14159 SE outer corner
          Per-car topics/services under /carN, TF frames carN/* (requirement 1.4). -->
     <arg name="gui" default="false"/>
+    <arg name="start_gazebo" default="true"/>
     <arg name="car0_x" default="2.3"/>
     <arg name="car0_y" default="2.4"/>
     <arg name="car0_yaw" default="-2.334"/>
@@ -24,6 +25,7 @@
     <!-- one gazebo instance with nesting_room world -->
     <include file="$(find basic_room_sim)/launch/nesting_room.launch">
         <arg name="gui" value="$(arg gui)"/>
+        <arg name="start_gazebo" value="$(arg start_gazebo)"/>
     </include>
 
     <include file="$(find car3_swarm)/launch/car_spawn.launch">

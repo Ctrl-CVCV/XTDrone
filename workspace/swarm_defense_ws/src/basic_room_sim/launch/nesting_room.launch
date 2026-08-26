@@ -5,12 +5,13 @@
     <arg name="gui" default="true"/>
     <arg name="headless" default="false"/>
     <arg name="debug" default="false"/>
+    <arg name="start_gazebo" default="true"/>
 
     <env name="GAZEBO_MODEL_PATH" value="$(find basic_room_sim)/models"/>
     <env name="GAZEBO_RESOURCE_PATH" value="$(find basic_room_sim):/usr/share/gazebo-11"/>
     <env name="GAZEBO_MODEL_DATABASE_URI" value=""/>
 
-    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <include if="$(arg start_gazebo)" file="$(find gazebo_ros)/launch/empty_world.launch">
         <arg name="world_name" value="$(find basic_room_sim)/worlds/nesting_room.world"/>
         <arg name="debug" value="$(arg debug)"/>
         <arg name="gui" value="$(arg gui)"/>

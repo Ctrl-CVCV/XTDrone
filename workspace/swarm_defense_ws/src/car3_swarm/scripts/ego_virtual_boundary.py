@@ -16,13 +16,17 @@ class EgoVirtualBoundary:
     def __init__(self):
         rospy.init_node("ego_virtual_boundary")
 
-        self.uavs = tuple(rospy.get_param("~uavs", ["iris_0", "iris_1"]))
-        center_x = float(rospy.get_param("~center_x", -0.11576))
-        center_y = float(rospy.get_param("~center_y", -0.00882))
+        self.uavs = tuple(rospy.get_param("~uavs", ["iris_0", "iris_1", "iris_2"]))
+        self.center_x = float(rospy.get_param("~center_x", -0.11576))
+        self.center_y = float(rospy.get_param("~center_y", -0.00882))
         side = float(rospy.get_param("~side", 6.0))
         self.z_min = float(rospy.get_param("~z_min", 0.0))
+        # 虚拟墙顶 = 真实内墙高度(3.0 m)。UAV 以 H_f=4.0 飞行可从墙顶飞过。
         self.z_max = float(rospy.get_param("~z_max", 3.0))
         self.spacing = float(rospy.get_param("~spacing", 0.2))
+        # 四扇门的半宽。UP/DOWN 门在 x=center_x 两侧、LEFT/RIGHT 门在 y=center_y 两侧
+        # 各留 gate_half_width*2 的缺口。缺了它会令 EGO 把内墙看作实心矩形、绕墙角进场。
+        self.gate_half_width = float(rospy.get_param("~gate_half_width", 0.6))
         monitor_rate = float(rospy.get_param("~monitor_rate", 2.0))
         self.stable_samples = int(rospy.get_param("~stable_samples", 3))
         self.stable_tolerance = float(rospy.get_param("~stable_tolerance", 0.05))
@@ -37,10 +41,10 @@ class EgoVirtualBoundary:
 
         half = side * 0.5
         self.bounds = (
-            center_x - half,
-            center_x + half,
-            center_y - half,
-            center_y + half,
+            self.center_x - half,
+            self.center_x + half,
+            self.center_y - half,
+            self.center_y + half,
         )
         self.world_points = self._make_wall_points()
         self.world_poses = {}
@@ -100,15 +104,20 @@ class EgoVirtualBoundary:
 
     def _make_wall_points(self):
         xmin, xmax, ymin, ymax = self.bounds
+        gw = self.gate_half_width
         xs = self._samples(xmin, xmax, self.spacing)
         ys = self._samples(ymin, ymax, self.spacing)
         zs = self._samples(self.z_min, self.z_max, self.spacing)
+        # 四扇门在虚拟墙上留缺口：UP/DOWN 门（南北墙，x=center_x 两侧）、
+        # LEFT/RIGHT 门（东西墙，y=center_y 两侧），缺口宽 = 2*gate_half_width，
+        # 与真实 1.2m 墙洞对齐。没有缺口时 EGO 把内墙当作实心矩形，只能绕墙角进场
+        # （东偏/西偏），撞上门框。
         points = []
         for z in zs:
-            points.extend((x, ymin, z) for x in xs)
-            points.extend((x, ymax, z) for x in xs)
-            points.extend((xmin, y, z) for y in ys[1:-1])
-            points.extend((xmax, y, z) for y in ys[1:-1])
+            points.extend((x, ymin, z) for x in xs if abs(x - self.center_x) > gw)
+            points.extend((x, ymax, z) for x in xs if abs(x - self.center_x) > gw)
+            points.extend((xmin, y, z) for y in ys[1:-1] if abs(y - self.center_y) > gw)
+            points.extend((xmax, y, z) for y in ys[1:-1] if abs(y - self.center_y) > gw)
         return points
 
     def _model_states_cb(self, msg):

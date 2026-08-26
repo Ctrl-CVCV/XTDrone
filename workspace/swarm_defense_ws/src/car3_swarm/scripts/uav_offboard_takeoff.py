@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Start/verify the XTDrone bridge, switch two UAVs to OFFBOARD, arm and take off."""
+"""Start/verify the XTDrone bridges, switch UAVs to OFFBOARD, arm and take off."""
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
@@ -10,12 +11,19 @@ import time
 import rosnode
 import rospy
 from geometry_msgs.msg import Pose, PoseStamped
-from mavros_msgs.msg import PositionTarget, State
-from mavros_msgs.srv import CommandBool, SetMode
+from mavros_msgs.msg import ParamValue, PositionTarget, State
+from mavros_msgs.srv import CommandBool, ParamSet, SetMode
 from std_msgs.msg import String
 
 
-UAVS = ("iris_0", "iris_1")
+# MPC_LAND_CRWL: 着陆爬行速度阈值，PX4 地检据此判定"垂直运动"。
+# 默认 0.5 -> 垂向运动阈值 0.225 m/s，SITL 中 EKF vz 噪声(~0.17-0.25)在 ARM 时
+# 会误触发，导致 landed 标志清除 -> 起飞斜坡永不启动 -> 0 推力。调大后阈值 0.9。
+LAND_CRWL_PARAM = "MPC_LAND_CRWL"
+LAND_CRWL_VALUE = 2.0
+
+DEFAULT_UAVS = ("iris_0", "iris_1", "iris_2")
+UAVS = DEFAULT_UAVS
 BRIDGE_DIR = "/home/dev/XTDrone/communication"
 BRIDGE_SCRIPT = os.path.join(BRIDGE_DIR, "multirotor_communication.py")
 
@@ -65,6 +73,31 @@ class UavStatus:
         self.arm = rospy.ServiceProxy(
             "/%s/mavros/cmd/arming" % name, CommandBool
         )
+        self.set_param = rospy.ServiceProxy(
+            "/%s/mavros/param/set" % name, ParamSet
+        )
+
+    def relax_land_detector(self, timeout):
+        """调大 MPC_LAND_CRWL，防止 SITL EKF vz 噪声在 ARM 时误清除 landed。
+
+        PX4 地检的垂向运动阈值 = min(0.9*MPC_LAND_CRWL*0.5, LNDMC_Z_VEL_MAX)。
+        默认 0.5 -> 0.225 m/s，过于敏感；2.0 -> 0.9 m/s。必须在 ARM 前设置。
+        """
+        deadline = time.monotonic() + timeout
+        while not rospy.is_shutdown() and time.monotonic() < deadline:
+            try:
+                resp = self.set_param(
+                    LAND_CRWL_PARAM, ParamValue(integer=0, real=LAND_CRWL_VALUE)
+                )
+            except rospy.ServiceException:
+                rospy.sleep(0.5)
+                continue
+            if resp.success:
+                rospy.loginfo("%s %s=%.2f 已设置", self.name, LAND_CRWL_PARAM, LAND_CRWL_VALUE)
+                return
+            rospy.logwarn("%s 设置 %s 被拒绝，重试", self.name, LAND_CRWL_PARAM)
+            rospy.sleep(0.5)
+        raise RuntimeError("%s 无法设置 %s=%s" % (self.name, LAND_CRWL_PARAM, LAND_CRWL_VALUE))
 
     def _state_cb(self, msg):
         self.state = msg
@@ -93,6 +126,13 @@ def wait_until(predicate, timeout, description):
     raise RuntimeError("等待超时：%s" % description)
 
 
+def _uav_index(name):
+    match = re.search(r"(\d+)$", name)
+    if match is None:
+        raise RuntimeError("UAV 名称必须以数字结尾: %s" % name)
+    return int(match.group(1))
+
+
 def start_missing_bridges():
     started = []
     try:
@@ -100,14 +140,14 @@ def start_missing_bridges():
     except rosnode.ROSNodeIOException:
         node_names = set()
 
-    for index, name in enumerate(UAVS):
+    for name in UAVS:
         node_name = "/%s_communication" % name
         if node_name in node_names:
             rospy.loginfo("%s 通信桥已运行", name)
             continue
         rospy.loginfo("启动 %s XTDrone 通信桥", name)
         process = subprocess.Popen(
-            [sys.executable, BRIDGE_SCRIPT, "iris", str(index)],
+            [sys.executable, BRIDGE_SCRIPT, "iris", str(_uav_index(name))],
             cwd=BRIDGE_DIR,
         )
         started.append(process)
@@ -166,7 +206,7 @@ def make_takeoff_pose(status, altitude):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="两架 Iris 一键 OFFBOARD、ARM、起飞")
+    parser = argparse.ArgumentParser(description="Iris 一键 OFFBOARD、ARM、起飞")
     parser.add_argument("--altitude", type=float, default=1.5, help="本地起飞高度，默认 1.5 m")
     parser.add_argument("--timeout", type=float, default=30.0, help="每个阶段超时秒数")
     parser.add_argument(
@@ -174,7 +214,14 @@ def main():
         action="store_true",
         help="不自动启动缺失的 XTDrone 通信桥",
     )
+    parser.add_argument(
+        "--uavs",
+        default=",".join(DEFAULT_UAVS),
+        help="要起飞的无人机名，逗号分隔；默认 %s" % ",".join(DEFAULT_UAVS),
+    )
     args = parser.parse_args(rospy.myargv()[1:])
+    global UAVS
+    UAVS = tuple(name.strip() for name in args.uavs.split(",") if name.strip())
 
     if args.altitude < 0.5:
         raise RuntimeError("起飞高度不能低于 0.5 m")
@@ -186,12 +233,12 @@ def main():
         wait_until(
             lambda: all(s.vision_pose_count >= 3 for s in statuses),
             args.timeout,
-            "Gazebo ground-truth vision pose；请先运行 get_local_pose.py iris 2",
+            "Gazebo ground-truth vision pose；请先运行 get_local_pose.py iris %d" % len(UAVS),
         )
         wait_until(
             lambda: all(s.camera_pose_count >= 3 for s in statuses),
             args.timeout,
-            "EGO camera_pose；请先运行 ego_swarm_transfer.py iris 2",
+            "EGO camera_pose；请先运行 ego_swarm_transfer.py iris %d" % len(UAVS),
         )
 
         if not args.no_start_bridge:
@@ -200,15 +247,21 @@ def main():
         wait_until(
             lambda: all(s.state and s.state.connected and s.pose for s in statuses),
             args.timeout,
-            "两套 MAVROS connected 且 local pose 有数据",
+            "%d 套 MAVROS connected 且 local pose 有数据" % len(UAVS),
         )
 
         # Give publishers/subscribers time to connect, then let the bridge hold position.
         wait_until(
             lambda: all(s.cmd_pub.get_num_connections() > 0 for s in statuses),
             args.timeout,
-            "两套 XTDrone 通信桥订阅控制命令",
+            "%d 套 XTDrone 通信桥订阅控制命令" % len(UAVS),
         )
+
+        # 必须在 OFFBOARD/ARM 前调大地检垂向运动阈值，否则 SITL EKF vz 噪声
+        # 会在 ARM 时误清除 landed -> 起飞斜坡不启动 -> 0 推力、飞机不起飞。
+        for status in statuses:
+            status.relax_land_detector(args.timeout)
+
         publish_hover(statuses)
 
         for status in statuses:
@@ -229,7 +282,7 @@ def main():
         rospy.sleep(0.5)
 
         targets = [make_takeoff_pose(s, args.altitude) for s in statuses]
-        rospy.loginfo("两机已进入 OFFBOARD 并 ARM，开始原地起飞到 %.2f m", args.altitude)
+        rospy.loginfo("%d 机已进入 OFFBOARD 并 ARM，开始原地起飞到 %.2f m", len(UAVS), args.altitude)
         rate = rospy.Rate(10)
         for _ in range(30):
             for status, target in zip(statuses, targets):
@@ -242,9 +295,9 @@ def main():
                 for s in statuses
             ),
             args.timeout,
-            "两架飞机到达起飞高度",
+            "所有飞机到达起飞高度",
         )
-        rospy.loginfo("成功：iris_0、iris_1 均已 OFFBOARD、ARM，并到达起飞高度")
+        rospy.loginfo("成功：%s 均已 OFFBOARD、ARM，并到达起飞高度", ", ".join(UAVS))
         rospy.loginfo("脚本将保持自动启动的通信桥；现在可以发布 EGO 目标。降落后按 Ctrl+C。")
         rospy.spin()
     finally:

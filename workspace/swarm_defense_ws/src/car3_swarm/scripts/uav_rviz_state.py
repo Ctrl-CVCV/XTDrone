@@ -11,7 +11,7 @@ from nav_msgs.msg import Path
 
 class UavRvizState:
     def __init__(self):
-        self.names = ("iris_0", "iris_1")
+        self.names = ("iris_0", "iris_1", "iris_2")
         self.pose_pubs = {
             name: rospy.Publisher(
                 "/air_ground/%s/world_pose" % name,

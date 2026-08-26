@@ -1,0 +1,11 @@
+<launch>
+  <!-- 空中入侵无人机围捕（Phase 3: 出生->飞越内墙->入侵检测） -->
+  <arg name="auto_start" default="true"/>
+  <arg name="entry_side" default=""/>  <!-- 空=用 YAML；可传 UP/DOWN/LEFT/RIGHT 覆盖 -->
+  <node pkg="car3_swarm" type="air_intruder_pursuit.py" name="air_intruder_pursuit"
+        output="screen" respawn="false">
+    <rosparam file="$(find car3_swarm)/config/air_intruder_mission.yaml" command="load"/>
+    <param name="auto_start" value="$(arg auto_start)"/>
+    <param name="entry_side" value="$(arg entry_side)"/>
+  </node>
+</launch>
