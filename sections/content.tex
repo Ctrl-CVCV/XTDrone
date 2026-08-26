@@ -75,7 +75,145 @@
 \end{enumerate}
 \section{无人机状态估计：FAST-LIO2 激光-惯性紧耦合里程计与动捕系统融合}
 
-公式~\eqref{eq:fourier} 可以通过标签在正文中引用。
+\subsection{概述}
+
+系统采用~\textbf{FAST-LIO2}作为状态估计模块~\cite{xu2022fastlio2}，FAST-LIO2~是一种紧耦合的迭代扩展卡尔曼滤波激光-惯性里程计算法，无需特征提取，直接将去畸变后的原始激光点通过点到平面距离残差与~ikd-Tree~地图配准，实现高精度、低延迟的~6~自由度位姿估计。
+
+系统中，IMU~数据来源于飞控内置的双~BMI-088~传感器，以~$200\,\text{Hz}$~频率输出加速度与角速度测量。LiDAR~与~IMU~之间的外参及时间偏移采用~LI-Init~\cite{zhu2022liinit}离线标定得到，标定后里程计以~IMU~坐标系为参考基准。
+
+\subsection{传感器配置与安装}
+
+\begin{table}[H]
+\centering
+\caption{传感器配置}
+\label{tab:sensors}
+\begin{tabular}{lll}
+\toprule
+\textbf{传感器} & \textbf{型号} & \textbf{关键参数} \\
+\midrule
+激光雷达   & Livox Mid-360 & $360^\circ\times59^\circ$ 视场角，$10\,\text{Hz}$ 点云发布频率 \\
+IMU        & 双 BMI-088  & NxtPX4v2飞控内置，$200\,\text{Hz}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Livox Mid-360~安装于机身上方，以~3D~打印支架向前倾斜~$15^\circ$。Mid-360~原始视场上仰$52^\circ$、下俯仅$7^\circ$，前倾$15^\circ$后等效下视角度扩展至$22^\circ$，使激光雷达能够扫描到前方地面及低矮障碍物信息。LiDAR~与~IMU~之间的外参$\mathbf{T}_L^I$及时间偏移由~LI-Init~离线标定，$\mathbf{T}_L^I$包含旋转与平移两部分，标定后的里程计以~IMU~为参考基座，整个系统的感知、规划与控制算法均围绕~IMU~中心坐标系部署。
+
+\subsection{状态定义与 IMU 运动学}
+
+FAST-LIO2~的完整状态向量定义在乘积流形$\mathcal{M} = SO(3)\times\mathbb{R}^{15}\times SO(3)\times\mathbb{R}^{3}$上，切空间维度为~24：
+\begin{equation}
+\xvec = \begin{bmatrix}
+{}^{\!G}\Rmat_I^{\mathsf{T}} &
+{}^{\!G}\pvec_I^{\mathsf{T}} &
+{}^{\!G}\vvec_I^{\mathsf{T}} &
+\mathbf{b}_\omega^{\mathsf{T}} &
+\mathbf{b}_a^{\mathsf{T}} &
+{}^{\!G}\mathbf{g}^{\mathsf{T}} &
+{}^{\!I}\Rmat_L^{\mathsf{T}} &
+{}^{\!I}\pvec_L^{\mathsf{T}}
+\end{bmatrix}^{\mathsf{T}}
+\label{eq:fastlio_state}
+\end{equation}
+其中${}^{\!G}\Rmat_I\in SO(3)$为~IMU~在世界系$\{G\}$下的姿态，${}^{\!G}\pvec_I,{}^{\!G}\vvec_I\in\mathbb{R}^3$为位置与速度，$\mathbf{b}_\omega,\mathbf{b}_a\in\mathbb{R}^3$为陀螺仪与加速度计零偏，${}^{\!G}\mathbf{g}\in S^2$为约束在已知模长球面上的重力向量，${}^{\!I}\Rmat_L\in SO(3)$和${}^{\!I}\pvec_L\in\mathbb{R}^3$为~LiDAR~与~IMU~之间的外参旋转与平移。本系统中外参 ${}^{\!I}\Rmat_L$ 与 ${}^{\!I}\pvec_L$ 已由~LI-Init~离线标定并保持固定，有效在线估计的自由度为~18。
+连续时间下，IMU~的运动学模型由加速度计测量$\mathbf{a}_m$与陀螺仪测量$\boldsymbol{\omega}_m$驱动：
+
+\begin{equation}
+\begin{bmatrix}
+{}^{\!G}\dot{\Rmat}_I \\[2pt]
+{}^{\!G}\dot{\pvec}_I \\[2pt]
+{}^{\!G}\dot{\vvec}_I \\[2pt]
+\dot{\mathbf{b}}_\omega \\[2pt]
+\dot{\mathbf{b}}_a \\[2pt]
+{}^{\!G}\dot{\mathbf{g}} \\[2pt]
+{}^{\!I}\dot{\Rmat}_L \\[2pt]
+{}^{\!I}\dot{\pvec}_L
+\end{bmatrix}
+=
+\begin{bmatrix}
+{}^{\!G}\Rmat_I\,\lfloor\boldsymbol{\omega}_m - \mathbf{b}_\omega - \mathbf{n}_\omega\rfloor_{\times} \\[2pt]
+{}^{\!G}\vvec_I \\[2pt]
+{}^{\!G}\Rmat_I(\mathbf{a}_m - \mathbf{b}_a - \mathbf{n}_a) + {}^{\!G}\mathbf{g} \\[2pt]
+\mathbf{n}_{b\omega} \\[2pt]
+\mathbf{n}_{ba} \\[2pt]
+\mathbf{0}_{3\times 1} \\[2pt]
+\mathbf{0}_{3\times 3} \\[2pt]
+\mathbf{0}_{3\times 1}
+\end{bmatrix}
+\label{eq:imu_kinematics}
+\end{equation}
+其中$\lfloor\cdot\rfloor_{\times}$为反对称矩阵算子，$\mathbf{n}_a,\mathbf{n}_\omega$为测量白噪声，$\mathbf{n}_{ba},\mathbf{n}_{b\omega}$为零偏随机游走噪声。外参的导数为零反映了其离线标定后保持不变的特性。
+
+\subsection{IEKF 观测与迭代更新}
+
+当一帧完整的~LiDAR~点云以 $10\,\text{Hz}$ 频率累积完毕后，系统利用~IEKF~对前向传播的先验状态进行迭代校正。
+
+\subsubsection{反向传播与点云去畸变}
+
+设一帧~LiDAR~扫描的结束时刻为$t_e$，在此之前的~IMU~状态序列已由前向传播记录。对于扫描内时间戳为$t_s\in[t_e-100\,\text{ms},\,t_e]$的每个激光点，沿~IMU~时间线反向积分，将该点从采样时刻$t_s$的~LiDAR~坐标系变换至扫描结束时刻$t_e$的~IMU~坐标系，消除帧内运动畸变：
+\begin{equation}
+{}^{I_{t_e}}\mathbf{p}_j = {}^{I_{t_e}}\Rmat_{I_{t_s}}\,\big({}^{I}\Rmat_L\,{}^{L}\mathbf{p}_j + {}^{I}\pvec_L\big) + {}^{I_{t_e}}\pvec_{I_{t_s}}
+\label{eq:backward_prop}
+\end{equation}
+其中${}^{I_{t_e}}\Rmat_{I_{t_s}},{}^{I_{t_e}}\pvec_{I_{t_s}}$由$t_e$至$t_s$的~IMU~反向积分获得。
+
+\subsubsection{点到平面观测模型}
+
+对于去畸变后的每个激光点，利用当前~IEKF~迭代的状态估计$\hat{\xvec}^{\kappa}$将其变换至世界系，并在~ikd-Tree~地图中搜索最近的~5~个邻域点。对这~5~个点进行平面拟合，得到平面法向量$\mathbf{n}_j$及中心点$\mathbf{q}_j$，其中法向量为邻域点协方差矩阵最小特征值对应的特征方向。定义点到平面距离残差：
+\begin{equation}
+z_j^{\kappa} = \mathbf{n}_j^{\mathsf{T}}\Big({}^{\!G}\Rmat_I^{\kappa}\big({}^{I}\Rmat_L\,{}^{L}\mathbf{p}_j + {}^{I}\pvec_L\big) + {}^{\!G}\pvec_I^{\kappa} - \mathbf{q}_j\Big)
+\label{eq:residual}
+\end{equation}
+残差$|z_j^{\kappa}|$超过阈值的匹配点被视为外点并剔除。对所有有效匹配点堆叠残差向量$\mathbf{z}^{\kappa}=[z_1^{\kappa},\ldots,z_m^{\kappa}]^{\mathsf{T}}$，在当前估计处线性化得到观测雅可比$\mathbf{H}^{\kappa}=\partial\mathbf{z}^{\kappa}/\partial\delta\xvec$，其中$\delta\xvec$为切空间上的误差状态扰动。
+
+\subsubsection{迭代卡尔曼更新}
+
+FAST-LIO2~采用等价卡尔曼增益公式，将矩阵求逆的复杂度从测量维度降至$24$维状态维度。第$\kappa$次迭代的更新律为：
+\begin{align}
+\mathbf{K}^{\kappa} &= \big((\mathbf{H}^{\kappa})^{\mathsf{T}}\mathbf{R}^{-1}\mathbf{H}^{\kappa} + \hat{\Pcal}^{-1}\big)^{-1}(\mathbf{H}^{\kappa})^{\mathsf{T}}\mathbf{R}^{-1} \label{eq:iekf_gain} \\[2pt]
+\hat{\xvec}^{\kappa+1} &= \hat{\xvec}^{\kappa} \boxplus \Big(-\mathbf{K}^{\kappa}\mathbf{z}^{\kappa} - (\mathbf{I} - \mathbf{K}^{\kappa}\mathbf{H}^{\kappa})(\hat{\xvec}^{\kappa} \boxminus \hat{\xvec}^{0})\Big) \label{eq:iekf_update}
+\end{align}
+其中$\hat{\Pcal}$为前向传播得到的先验协方差矩阵，$\mathbf{R}=\sigma^{2}\mathbf{I}$为~LiDAR~测量噪声协方差，取$\sigma=0.001$，$\boxplus$与$\boxminus$分别为流形上的广义加法与减法，在$SO(3)$和$S^2$分量上自动处理旋转与球面约束的非线性结构。$\hat{\xvec}^{0}$为前向传播得到的先验状态，项$(\hat{\xvec}^{\kappa}\boxminus\hat{\xvec}^{0})$起到先验约束的作用，防止迭代偏离传播结果过远。
+
+收敛后更新后验协方差：
+\begin{equation}
+\Pcal = (\mathbf{I} - \mathbf{K}\mathbf{H})\,\hat{\Pcal}
+\label{eq:iekf_cov}
+\end{equation}
+更新后的状态将作为下一轮~IMU~前向传播的起点。
+
+\subsection{高频里程计输出}
+
+上述~IEKF~在每帧~LiDAR~到达时以 $10\,\text{Hz}$ 对状态进行一次校正，但在两帧~LiDAR~之间约 $100\,\text{ms}$ 的间隙内，仅依靠~IMU~的前向传播来维持位姿估计。IMU~以$200\,\text{Hz}$提供了约~20~次惯性测量，系统利用中值积分法将这些测量实时转化为高频里程计输出，以$200\,\text{Hz}$持续向前传播位姿、速度与姿态。
+
+对于相邻两次~IMU~测量 $t_k\to t_{k+1}$，间隔 $\Delta t=5\,\text{ms}$，取角速度与加速度的测量均值以抑制高频噪声：
+\begin{equation}
+\bar{\mathbf{a}} = \frac{\mathbf{a}_m(t_k) + \mathbf{a}_m(t_{k+1})}{2},\qquad
+\bar{\boldsymbol{\omega}} = \frac{\boldsymbol{\omega}_m(t_k) + \boldsymbol{\omega}_m(t_{k+1})}{2}
+\end{equation}
+
+首先利用去偏的角速度均值更新姿态。令$\operatorname{Exp}(\boldsymbol{\phi})$为$SO(3)$上的指数映射，将旋转向量$\boldsymbol{\phi}$映射为旋转矩阵，其方向为旋转轴、模长为旋转角：
+\begin{equation}
+{}^{\!G}\Rmat_I(t_{k+1}) = {}^{\!G}\Rmat_I(t_k)\,\operatorname{Exp}\!\big((\bar{\boldsymbol{\omega}} - \mathbf{b}_\omega)\,\Delta t\big)
+\label{eq:quat_prop}
+\end{equation}
+
+随后采用两步中点法合成世界系下的加速度。首先将$t_k$时刻的加速度旋转至世界系：
+\begin{equation}
+\mathbf{a}_{w,0} = {}^{\!G}\Rmat_I(t_k)\,(\mathbf{a}_m(t_k) - \mathbf{b}_a) + {}^{\!G}\mathbf{g}
+\end{equation}
+待姿态经式(\ref{eq:quat_prop})更新至$t_{k+1}$后，在$t_{k+1}$姿态下计算：
+\begin{equation}
+\mathbf{a}_{w,1} = {}^{\!G}\Rmat_I(t_{k+1})\,(\mathbf{a}_m(t_{k+1}) - \mathbf{b}_a) + {}^{\!G}\mathbf{g}
+\end{equation}
+取两帧世界加速度的均值作为该步的等效加速度，用于速度与位置的二阶精度积分：
+\begin{align}
+{}^{\!G}\vvec_I(t_{k+1}) &= {}^{\!G}\vvec_I(t_k) + \frac{\mathbf{a}_{w,0} + \mathbf{a}_{w,1}}{2}\,\Delta t \label{eq:vel_prop} \\
+{}^{\!G}\pvec_I(t_{k+1}) &= {}^{\!G}\pvec_I(t_k) + {}^{\!G}\vvec_I(t_k)\,\Delta t
+   + \frac{1}{2}\cdot\frac{\mathbf{a}_{w,0} + \mathbf{a}_{w,1}}{2}\,\Delta t^2 \label{eq:pos_prop}
+\end{align}
+上述前向传播在每次~IMU~回调中执行，对外提供与~IMU~同频的$200\,\text{Hz}$里程计。$10\,\text{Hz}$的~IEKF~校正输出则作为该高频里程计的基准参考，用于修正传播过程中的累积漂移。
+% ---- end of state_estimation.tex ----
 
 \section{建图、路径规划与轨迹优化：EGO-Swarm}
 

@@ -3,8 +3,9 @@
 \documentclass[UTF8,zihao=-4,fontset=fandol]{ctexart}
 
 \usepackage[a4paper,margin=2.5cm]{geometry}
-\usepackage{amsmath}
+\usepackage{amsmath,amssymb}
 \usepackage{graphicx}
+\usepackage{float}
 \usepackage{booktabs}
 \usepackage{xcolor}
 \usepackage{enumitem}
@@ -13,6 +14,13 @@
 
 \graphicspath{{figures/}}
 \setlist{nosep}
+
+% FAST-LIO2 状态估计章节使用的数学记号
+\newcommand{\xvec}{\mathbf{x}}
+\newcommand{\pvec}{\mathbf{p}}
+\newcommand{\vvec}{\mathbf{v}}
+\newcommand{\Rmat}{\mathbf{R}}
+\newcommand{\Pcal}{\mathbf{P}}
 
 \newcommand{\doctitle}{基于Voronoi地图的多智能体封控围捕系统设计}
 \newcommand{\workauthors}{郑信哲、刘韩旭、黄进一、曹向、徐书浩、黄原野}
