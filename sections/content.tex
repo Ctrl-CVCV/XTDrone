@@ -73,7 +73,7 @@
     \item 无人机与麦轮车分别对入侵目标进行追踪、拦截和包围；
     \item 当入侵目标与任一无人机之间的距离不大于 $r_1$，或与麦轮车之间的距离不大于 $r_2$ 时，判定该目标被成功捕获，围捕任务结束。
 \end{enumerate}
-\section{无人机状态估计：FAST-LIO2 激光-惯性紧耦合里程计与动捕系统融合}
+\section{无人机状态估计：SWARM-LIO 集群激光-惯性紧耦合里程计与动捕系统融合}
 
 \subsection{概述}
 
@@ -215,8 +215,94 @@ FAST-LIO2~采用等价卡尔曼增益公式，将矩阵求逆的复杂度从测�
 上述前向传播在每次~IMU~回调中执行，对外提供与~IMU~同频的$200\,\text{Hz}$里程计。$10\,\text{Hz}$的~IEKF~校正输出则作为该高频里程计的基准参考，用于修正传播过程中的累积漂移。
 % ---- end of state_estimation.tex ----
 
-\section{建图、路径规划与轨迹优化：EGO-Swarm}
+\subsection{动作捕捉系统融合}
+\section{集群建图、路径规划与轨迹优化：EGO-Swarm}
 
+\subsection{概述}
+Diff-Planner 是面向四旋翼无人机局部轨迹规划的模块，由 EGO-Planner-v2~\cite{zhou2022swarm} 改进而来，主要由以下三个子模块构成：
+\begin{enumerate}
+    \item \textbf{栅格地图：} 基于 FAST-LIO2 输出的降采样点云，通过 Raycast 算法构建概率占据栅格地图；
+    \item \textbf{路径规划：} 基于 A* 算法在栅格地图中搜索一条从当前位置到目标点的无碰撞引导路径点序列；
+    \item \textbf{轨迹优化：} 基于GCOPTER~\cite{wang2022gcopter}轨迹优化框架，以 A* 路径点序列和膨胀占据栅格为约束，通过 L-BFGS 求解平滑、动力学可行的局部轨迹。
+\end{enumerate}
+
+\subsection{栅格地图构建}
+
+\subsubsection{FAST-LIO2 点云输入}
+Diff-Planner 的建图模块订阅 FAST-LIO2 发布的降采样世界系点云。原始点云经过采样后仍能提供高分辨率栅格地图所需的障碍物信息，同时有效降低了后续 Raycast 操作的射线数量和计算开销。
+
+\subsubsection{概率占据栅格与 Raycast}
+系统采用 Log-Odds 概率更新模型对每个栅格单元进行占据概率估计。核心操作基于体素遍历算法：从激光雷达原点出发，沿各射线方向逐个穿越栅格单元，被激光点击中的终末栅格增加占据概率，射线穿透的中间栅格降低占据概率。更新公式为：
+\begin{equation}
+    L(m_i \mid z_{1:t}) = L(m_i \mid z_{1:t-1}) + L(m_i \mid z_t)
+\end{equation}
+其中 $L(\cdot) = \log\frac{p}{1-p}$ 为 Log-Odds 变换，$m_i$ 为第 $i$ 个栅格单元，$z_t$ 为当前帧点云量测。概率值被箝位在 $[p_{\min},p_{\max}]$ 区间，通过 $p_{\text{occ}}$ 阈值判定占据状态。
+
+在占据栅格的基础上，系统进一步构建膨胀占据栅格：对每个栅格统计其膨胀半径内的占据栅格数量，形成整数计数的稠密距离场。后续轨迹优化的障碍物约束即通过查询该膨胀计数值来实现。
+
+Mid-360 采用非重复扫描机制，不存在传统多线激光雷达的物理扫描线概念，其点云在不同积分时间具有不同的视场覆盖率。对此，Diff-Planner 在点云进入栅格地图更新前每隔 3 点取 1 点进行大幅降采样，以均衡不同视场区域的点密度差异，避免 Raycast 射线数量因中心区域过密而急剧膨胀。除此之外，系统还对距离机体 $0.3\,\text{m}$ 以内的近场点做盲区过滤，消除机身遮挡产生的无效回波。对于非重复扫描缺乏固定线束结构的问题，代码中按等效参数 $\texttt{scan\_line}=4$ 对点云进行伪线束划分，用于后续邻域搜索中的法向量估计。
+
+\subsection{前端路径规划 A* 搜索}
+
+A* 搜索在占据栅格地图上生成从当前位置到目标点的无碰撞路径点序列。算法维护开放集与关闭集两个集合，每次从开放集中选取估价函数最低的节点扩展：
+\begin{equation}
+f(n) = g(n) + h(n)
+\end{equation}
+其中 $g(n)$ 为从起点到节点 $n$ 的实际路径代价，各步取相邻栅格间的欧氏距离
+\begin{equation}
+d=\sqrt{\Delta x^2+\Delta y^2+\Delta z^2}.
+\end{equation}
+$h(n)$ 为对角线启发式，即从 $n$ 到终点的三维对角线距离估计。扩展时在 26-邻域内搜索，每个维度取 $\{-1,0,+1\}$ 的笛卡尔积，跳过占据栅格。已关闭节点和超出局部地图边界的节点不再访问。搜索被限制在 $0.2\,\text{s}$ 的时间预算内，超时则放弃本次规划。
+
+对 A* 终点或起点落入占据栅格内部的情况，算法沿起点-终点连线方向逐步外推，直至到达空闲栅格。A* 被限制在 $0.2\,\text{s}$ 的时间预算内完成搜索，超时则放弃本次规划以避免阻塞主循环。
+
+\subsection{轨迹优化后端}
+
+\subsubsection{MINCO 轨迹参数化}
+
+轨迹优化采用 MINCO 框架，将轨迹在时间上分为 $N$ 段，每段为 $2s-1$ 阶多项式。本系统取 $s=3$ 对应最小 jerk 控制，每段为 5 次多项式，在分段点处施加位置、速度、加速度的连续约束。优化变量为中间路径点位置 $\bm{q}_i\in\mathbb{R}^3$ 与各段虚拟时间参数 $T_i$，轨迹的完整空间-时间形态由此两个紧凑向量唯一确定。令 $\operatorname{Exp}$ 为时间参数的虚拟映射以保证 $T_i>0$ 的无约束优化：
+\begin{equation}
+T_i = \begin{cases}
+(0.5\tau_i+1)\tau_i+1, & \tau_i > 0 \\
+1 / ((0.5\tau_i-1)\tau_i+1), & \tau_i \leq 0
+\end{cases}
+\end{equation}
+优化变量总数为 $3(N-1)+N$。多项式系数矩阵 $\mathbf{c}_i\in\mathbb{R}^{6\times 3}$ 由 $\{\bm{q}_i,T_i\}$ 通过闭式线性映射唯一确定，使得轨迹的位置 $p(t)$、速度 $v(t)$、加速度 $a(t)$、jerk $j(t)$ 可由系数直接解析求值：
+\begin{equation}
+p(t) = \mathbf{c}_i^{\mathsf{T}}\,\big[1,\,t,\,t^2,\,t^3,\,t^4,\,t^5\big]^{\mathsf{T}},\qquad
+v(t) = \mathbf{c}_i^{\mathsf{T}}\,\big[0,\,1,\,2t,\,3t^2,\,4t^3,\,5t^4\big]^{\mathsf{T}},\quad\ldots
+\end{equation}
+
+\subsubsection{障碍物约束}
+
+对于 A* 路径点序列的每对相邻点，在膨胀占据栅格上检测初始轨迹的碰撞状态。当某段轨迹的控制点落入占据区域时，以 A* 路径为参考计算障碍物边界的基点 $\mathbf{b}_j$ 和方向 $\mathbf{d}_j$，其中基点位于自由空间与占据空间的交界处，方向由基点指向障碍物内部。对每个约束控制点$\mathbf{p}$，定义沿约束方向的穿透距离：
+\begin{equation}
+d = (\mathbf{p} - \mathbf{b}_j)\cdot \mathbf{d}_j
+\end{equation}
+约束代价为穿透距离违反安全间隙 $\delta$ 的三次罚函数：
+\begin{equation}
+J_{\text{obs}}(\mathbf{p}) = \sum_{j} w_{\text{obs}}\,\max(0,\;\delta - d)^3 + w_{\text{soft}}\,\sqrt{1 + \max(0,\;\delta_{\text{soft}} - d)^2 / r^2}
+\end{equation}
+其中 $\delta$ 为硬约束障碍物间隙，$\delta_{\text{soft}}$ 为软约束间隙，$r$ 为软约束光滑半径。基点处障碍物判据直接查询膨胀占据栅格计数值，该计数为膨胀半径内占据栅格的数量，正比于到最近障碍物的距离。
+
+\subsubsection{优化问题与求解}
+
+完整的轨迹优化目标函数包含四项：
+综上，完整的轨迹优化问题可表述为如下形式：
+\begin{align}
+\min_{\mathbf{q}_i,\,T_i}\quad & \int_{0}^{\Sigma T_i} \|\mathbf{j}(t)\|^2 dt \;+\; w_{\text{time}}\sum_{i=1}^{N} T_i \;+\; w_{\text{sqrvar}}\cdot\operatorname{Var}\big(\|\mathbf{c}_{k+1}-\mathbf{c}_k\|^2\big) \nonumber\\
+& \;+\; \sum_{k\in\mathcal{C}} w_{\text{obs}}\max(0,\delta-d_k)^3 \;+\; w_{\text{soft}}\sqrt{1+\max(0,\delta_{\text{soft}}-d_k)^2/r^2} \nonumber\\
+& \;+\; w_{\text{feas}}\sum_{t\in\mathcal{S}}\Big(\max(0,\|\mathbf{v}(t)\|^2-v_{\max}^2)^3 \nonumber\\
+&\qquad\qquad\;+\max(0,\|\mathbf{a}(t)\|^2-a_{\max}^2)^3+\max(0,\|\mathbf{j}(t)\|^2-j_{\max}^2)^3\Big) \\
+\text{s.t.}\quad & \mathbf{p}(t)=\mathbf{c}_i^{\mathsf{T}}[1,t,t^2,t^3,t^4,t^5]^{\mathsf{T}},\;t\in[0,T_i],\;i=1,\ldots,N \nonumber\\
+& \mathbf{p}^{(0,1,2)}(T_i^-)=\mathbf{p}^{(0,1,2)}(T_i^+),\quad i=1,\ldots,N-1 \nonumber\\
+& T_i > 0,\quad i=1,\ldots,N \nonumber
+\end{align}
+其中 $\mathcal{C}$ 为与障碍物发生碰撞的控制点索引集，$d_k=(\mathbf{p}_k-\mathbf{b}_j)\cdot\mathbf{d}_j$ 为沿约束方向的穿透距离；$\mathcal{S}$ 为轨迹上的采样时间点集；$\operatorname{Var}$ 为相邻控制点间距平方的方差，用于压制轨迹形状的剧烈曲折。上述问题为无约束非线性规划（除 $T_i>0$ 通过虚拟时间映射 $\tau_i\leftrightarrow T_i$ 自动满足），所有约束均以软罚函数形式并入目标，利用 MINCO 框架的解析梯度由 L-BFGS 求解。
+
+优化结束后，MINCO 轨迹直接以解析形式输出四旋翼的平坦状态量，包括位置 $p(t)$、速度 $v(t)$、加速度 $a(t)$ 和 jerk $j(t)$，作为连续时间的全状态参考，直接提供给底层飞行控制器作为前馈输入。
+
+偏航角 $\psi(t)$ 与偏航角速率 $\dot{\psi}(t)$ 不在 MINCO 优化变量中，而是由轨迹服务器 $\texttt{traj\_server}$ 独立计算。其策略为前视方向跟踪：取当前时刻前方 $\texttt{time\_forward}$ 秒处的轨迹位置与本时刻位置的连线方向作为期望偏航角 $\psi_d = \operatorname{atan2}(\Delta y,\Delta x)$，使无人机机头始终指向飞行方向。当存在外部偏航指令且最近一次指令在 $0.5\,\text{s}$ 以内时，系统优先使用该自定义偏航角以支持遥控器或上层任务的手动航向控制。偏航角速率和角加速度受限于预设上限，在实际飞行中为 $\dot{\psi}_{\max}= \pi\,\text{rad/s}$ 和 $\ddot{\psi}_{\max}=2\pi\,\text{rad/s}^2$，超出上限时系统沿速率斜坡逼近目标值以防止指令跳变。
 
 
 \section{基于PID的无人机姿态与位置控制：PX4-Ctrl}
@@ -228,13 +314,15 @@ FAST-LIO2~采用等价卡尔曼增益公式，将矩阵求逆的复杂度从测�
 \section{光电云台扫描实现}
 
 \section{基于Voronoi地图的多智能体封控围捕算法Intercepting Rogue Robots}
-
+\subsection{Matlab算法仿真实现}
 \section{仿真验证实现}
 
 \subsection{仿真项目概述}
 
 \subsection{系统架构图}
+
 \subsection{核心代码解析}
+
 \subsection{仿真验证}
 \subsection{代码仓库}
 https://github.com/Ctrl-CVCV/XTDrone/tree/XTDrone
