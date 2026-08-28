@@ -314,16 +314,87 @@ J_{\text{obs}}(\mathbf{p}) = \sum_{j} w_{\text{obs}}\,\max(0,\;\delta - d)^3 + w
 \section{光电云台扫描实现}
 
 \section{基于Voronoi地图的多智能体封控围捕算法Intercepting Rogue Robots}
+
 \subsection{Matlab算法仿真实现}
+
 \section{仿真验证实现}
 
 \subsection{仿真项目概述}
+\subsubsection{目的}
+基于开源项目XTDrone，对基于Voronoi的多智能体区域封控围捕算法进行仿真验证，验证算法的有效性和鲁棒性。
+\subsubsection{软件工具及版本号}
+\begin{itemize}
+    \item \textbf{仿真平台}：PX4 SITL + Gazebo Classic
+    \item \textbf{控制器}：PX4-Ctrl
+    \item \textbf{SLAM}：Swarm-LIO(无人机)、gmapping(无人车)
+    \item \textbf{规划器}：EGO-Swarm（无人机）、Navigation2(无人车)
+    \item \textbf{传感器}：D455、动作捕捉相机
+    \item \textbf{通信中间件}：MAVROS + ROS1 Noetic
+\end{itemize}
+\subsection{工作目录及架构}
+\begingroup\scriptsize
+\begin{verbatim}
+目录
+/home/dev/PX4-Autopilot
+  PX4 SITL、两机生成、MAVROS，以及整个空地系统的统一入口 launch
+/home/dev/XTDrone
+  Gazebo 真实位姿转发、XTDrone 多机通信桥、EGO 位姿转换
+/home/dev/XTDrone-single-car/workspace/swarm_defense_ws
+  Gazebo 房间与车辆模型、车辆 Nav、Voronoi 围捕、一键起飞、RViz
+/home/dev/ego_ws
+  EGO-Swarm 两机规划器和轨迹服务器
+/home/dev/catkin_ws
+  PX4/Gazebo ROS 依赖和相关仿真包
+\end{verbatim}
+\endgroup
 
+核心文件：
+
+\begingroup\scriptsize
+\begin{verbatim}
+文件
+/home/dev/PX4-Autopilot/launch/multi_vehicle.launch
+  统一启动 Gazebo、四车、两机、MAVROS、车辆 Nav 和 EGO
+car3_swarm/launch/multi_car3_nav.launch
+  四车共享地图、AMCL、虚拟障碍和 nav_to_pose
+car3_swarm/launch/voronoi_air_ground_pursuit.launch
+  单/双入侵车 Voronoi 围捕参数与节点
+car3_swarm/scripts/voronoi_air_ground_pursuit.py
+  围捕算法、状态机、捕获判据和捕获结果
+car3_swarm/scripts/uav_offboard_takeoff.py
+  两机通信桥、OFFBOARD、ARM 和起飞的一键脚本
+car3_swarm/scripts/ego_virtual_boundary.py
+  向两套 EGO 地图一次性注入带门洞的房间虚拟墙
+car3_swarm/rviz/air_ground.rviz
+  空地联合 RViz 配置
+XTDrone/sensing/pose_ground_truth/get_local_pose.py
+  Gazebo 世界真值转 MAVROS vision pose/speed
+XTDrone/motion_planning/3d/ego_swarm_transfer.py
+  MAVROS local pose 转 EGO camera_pose
+ego_planner/plan_manage/launch/multi_uav.launch
+  启动两套 EGO 规划器
+ego_planner/plan_manage/launch/run_in_xtdrone.launch
+  EGO 单机速度、加速度、地图和轨迹服务器配置
+\end{verbatim}
+\endgroup
+
+下文中相对路径 \texttt{car3\_swarm/...} 均相对于：
+
+\begin{verbatim}
+/home/dev/XTDrone-single-car/workspace/swarm_defense_ws/src
+\end{verbatim}
 \subsection{系统架构图}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{仿真流程图.jpg}
+    \caption{系统仿真流程图}
+    \label{fig:simulation_flowchart}
+\end{figure}
 
 \subsection{核心代码解析}
 
 \subsection{仿真验证}
+
 \subsection{代码仓库}
 https://github.com/Ctrl-CVCV/XTDrone/tree/XTDrone
 \section{实机平台及验证}
