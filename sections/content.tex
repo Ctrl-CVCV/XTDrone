@@ -304,12 +304,11 @@ J_{\text{obs}}(\mathbf{p}) = \sum_{j} w_{\text{obs}}\,\max(0,\;\delta - d)^3 + w
 
 偏航角 $\psi(t)$ 与偏航角速率 $\dot{\psi}(t)$ 不在 MINCO 优化变量中，而是由轨迹服务器 $\texttt{traj\_server}$ 独立计算。其策略为前视方向跟踪：取当前时刻前方 $\texttt{time\_forward}$ 秒处的轨迹位置与本时刻位置的连线方向作为期望偏航角 $\psi_d = \operatorname{atan2}(\Delta y,\Delta x)$，使无人机机头始终指向飞行方向。当存在外部偏航指令且最近一次指令在 $0.5\,\text{s}$ 以内时，系统优先使用该自定义偏航角以支持遥控器或上层任务的手动航向控制。偏航角速率和角加速度受限于预设上限，在实际飞行中为 $\dot{\psi}_{\max}= \pi\,\text{rad/s}$ 和 $\ddot{\psi}_{\max}=2\pi\,\text{rad/s}^2$，超出上限时系统沿速率斜坡逼近目标值以防止指令跳变。
 
-
 \section{基于PID的无人机姿态与位置控制：PX4-Ctrl}
 
 \section{基于gmapping建图与Navigation2的无人车辆导航}
 
-\section{基于ROS Noetic和WIFI的中心化车机通信实现}
+\section{基于ROS Noetic和UDP连接的中心化车机通信实现}
 
 \section{光电云台扫描实现}
 
@@ -392,6 +391,98 @@ ego_planner/plan_manage/launch/run_in_xtdrone.launch
 \end{figure}
 
 \subsection{核心代码解析}
+\subsubsection{启动运行环境}
+每个新终端先执行：
+\begingroup\scriptsize
+\begin{verbatim}
+source /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/devel/setup.bash
+\end{verbatim}
+\endgroup
+以实现环境的加载
+作用：
+
+\begin{itemize}
+\item 将 \texttt{swarm\_defense\_ws}、\texttt{ego\_ws}、\texttt{catkin\_ws} 叠加到 ROS 环境；
+\item 让 ROS 找到 \texttt{basic\_room\_sim}、\texttt{car3\_swarm}、\texttt{ego\_planner} 和 \texttt{px4}；
+\end{itemize}
+\subsubsection{终端一：启动空地统一协同仿真}
+
+
+\begingroup\scriptsize
+\begin{verbatim}
+source /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/devel/setup.bash
+
+roslaunch px4 multi_vehicle.launch \
+  gui:=true \
+  start_car_nav:=true \
+  start_ego:=true
+\end{verbatim}
+\endgroup
+
+
+\subsubsection{终端二：将 Gazebo 真值输入 PX4 EKF}
+\begingroup\scriptsize
+\begin{verbatim}
+source /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/devel/setup.bash
+cd /home/dev/XTDrone/sensing/pose_ground_truth
+python3 get_local_pose.py iris 2
+\end{verbatim}
+\endgroup
+
+\subsubsection{终端三：启动EGO位姿转换}
+\begingroup\scriptsize
+\begin{verbatim}
+source /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/devel/setup.bash
+
+roslaunch ego_planner plan_manage/multi_uav.launch
+\end{verbatim}
+\endgroup
+
+\subsubsection{终端四：一键通信、OFFBOARD、ARM 和起飞}
+\begingroup\scriptsize
+\begin{verbatim}
+source /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/devel/setup.bash
+rosrun car3_swarm uav_offboard_takeoff.py --altitude 1.5
+\end{verbatim}
+\endgroup
+\subsubsection{终端五：启动空地联合的Rviz}
+\begingroup\scriptsize
+\begin{verbatim}
+source /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/devel/setup.bash
+rviz -d /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/src/car3_swarm/rviz/air_ground.rviz
+\end{verbatim}
+\endgroup
+
+
+
+\subsubsection{终端六：启动无人车/无人机入侵与Voronoi围捕}
+\begingroup\scriptsize
+\begin{verbatim}
+#单入侵车模式
+source /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/devel/setup.bash
+roslaunch car3_swarm voronoi_air_ground_pursuit.launch intruder_mode:=single
+\end{verbatim}
+\begin{verbatim}
+#双入侵车模式
+source /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/devel/setup.bash
+roslaunch car3_swarm voronoi_air_ground_pursuit.launch intruder_mode:=dual
+\end{verbatim}
+\begin{verbatim}
+#单无人机入侵模式
+source /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/devel/setup.bash
+roslaunch car3_swarm voronoi_air_ground_pursuit.launch intruder_mode:=single_uav
+\end{verbatim}
+\begin{verbatim}
+#双无人机入侵模式
+source /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/devel/setup.bash
+roslaunch car3_swarm voronoi_air_ground_pursuit.launch intruder_mode:=dual_uav
+\end{verbatim}
+\begin{verbatim}
+#无人机+无人车混合入侵模式
+source /home/dev/XTDrone-single-car/workspace/swarm_defense_ws/devel/setup.bash
+roslaunch car3_swarm voronoi_air_ground_pursuit.launch intruder_mode:=mixed
+\end{verbatim}  
+\endgroup
 
 \subsection{仿真验证}
 
