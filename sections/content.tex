@@ -99,210 +99,9 @@ IMU        & 双 BMI-088  & NxtPX4v2飞控内置，$200\,\text{Hz}$ \\
 
 Livox Mid-360~安装于机身上方，以~3D~打印支架向前倾斜~$15^\circ$。Mid-360~原始视场上仰$52^\circ$、下俯仅$7^\circ$，前倾$15^\circ$后等效下视角度扩展至$22^\circ$，使激光雷达能够扫描到前方地面及低矮障碍物信息。LiDAR~与~IMU~之间的外参$\mathbf{T}_L^I$及时间偏移由~LI-Init~离线标定，$\mathbf{T}_L^I$包含旋转与平移两部分，标定后的里程计以~IMU~为参考基座，整个系统的感知、规划与控制算法均围绕~IMU~中心坐标系部署。
 
-\subsection{状态定义与 IMU 运动学}
-
-FAST-LIO2~的完整状态向量定义在乘积流形$\mathcal{M} = SO(3)\times\mathbb{R}^{15}\times SO(3)\times\mathbb{R}^{3}$上，切空间维度为~24：
-\begin{equation}
-\xvec = \begin{bmatrix}
-{}^{\!G}\Rmat_I^{\mathsf{T}} &
-{}^{\!G}\pvec_I^{\mathsf{T}} &
-{}^{\!G}\vvec_I^{\mathsf{T}} &
-\mathbf{b}_\omega^{\mathsf{T}} &
-\mathbf{b}_a^{\mathsf{T}} &
-{}^{\!G}\mathbf{g}^{\mathsf{T}} &
-{}^{\!I}\Rmat_L^{\mathsf{T}} &
-{}^{\!I}\pvec_L^{\mathsf{T}}
-\end{bmatrix}^{\mathsf{T}}
-\label{eq:fastlio_state}
-\end{equation}
-其中${}^{\!G}\Rmat_I\in SO(3)$为~IMU~在世界系$\{G\}$下的姿态，${}^{\!G}\pvec_I,{}^{\!G}\vvec_I\in\mathbb{R}^3$为位置与速度，$\mathbf{b}_\omega,\mathbf{b}_a\in\mathbb{R}^3$为陀螺仪与加速度计零偏，${}^{\!G}\mathbf{g}\in S^2$为约束在已知模长球面上的重力向量，${}^{\!I}\Rmat_L\in SO(3)$和${}^{\!I}\pvec_L\in\mathbb{R}^3$为~LiDAR~与~IMU~之间的外参旋转与平移。本系统中外参 ${}^{\!I}\Rmat_L$ 与 ${}^{\!I}\pvec_L$ 已由~LI-Init~离线标定并保持固定，有效在线估计的自由度为~18。
-连续时间下，IMU~的运动学模型由加速度计测量$\mathbf{a}_m$与陀螺仪测量$\boldsymbol{\omega}_m$驱动：
-
-\begin{equation}
-\begin{bmatrix}
-{}^{\!G}\dot{\Rmat}_I \\[2pt]
-{}^{\!G}\dot{\pvec}_I \\[2pt]
-{}^{\!G}\dot{\vvec}_I \\[2pt]
-\dot{\mathbf{b}}_\omega \\[2pt]
-\dot{\mathbf{b}}_a \\[2pt]
-{}^{\!G}\dot{\mathbf{g}} \\[2pt]
-{}^{\!I}\dot{\Rmat}_L \\[2pt]
-{}^{\!I}\dot{\pvec}_L
-\end{bmatrix}
-=
-\begin{bmatrix}
-{}^{\!G}\Rmat_I\,\lfloor\boldsymbol{\omega}_m - \mathbf{b}_\omega - \mathbf{n}_\omega\rfloor_{\times} \\[2pt]
-{}^{\!G}\vvec_I \\[2pt]
-{}^{\!G}\Rmat_I(\mathbf{a}_m - \mathbf{b}_a - \mathbf{n}_a) + {}^{\!G}\mathbf{g} \\[2pt]
-\mathbf{n}_{b\omega} \\[2pt]
-\mathbf{n}_{ba} \\[2pt]
-\mathbf{0}_{3\times 1} \\[2pt]
-\mathbf{0}_{3\times 3} \\[2pt]
-\mathbf{0}_{3\times 1}
-\end{bmatrix}
-\label{eq:imu_kinematics}
-\end{equation}
-其中$\lfloor\cdot\rfloor_{\times}$为反对称矩阵算子，$\mathbf{n}_a,\mathbf{n}_\omega$为测量白噪声，$\mathbf{n}_{ba},\mathbf{n}_{b\omega}$为零偏随机游走噪声。外参的导数为零反映了其离线标定后保持不变的特性。
-
-\subsection{IEKF 观测与迭代更新}
-
-当一帧完整的~LiDAR~点云以 $10\,\text{Hz}$ 频率累积完毕后，系统利用~IEKF~对前向传播的先验状态进行迭代校正。
-
-\subsubsection{反向传播与点云去畸变}
-
-设一帧~LiDAR~扫描的结束时刻为$t_e$，在此之前的~IMU~状态序列已由前向传播记录。对于扫描内时间戳为$t_s\in[t_e-100\,\text{ms},\,t_e]$的每个激光点，沿~IMU~时间线反向积分，将该点从采样时刻$t_s$的~LiDAR~坐标系变换至扫描结束时刻$t_e$的~IMU~坐标系，消除帧内运动畸变：
-\begin{equation}
-{}^{I_{t_e}}\mathbf{p}_j = {}^{I_{t_e}}\Rmat_{I_{t_s}}\,\big({}^{I}\Rmat_L\,{}^{L}\mathbf{p}_j + {}^{I}\pvec_L\big) + {}^{I_{t_e}}\pvec_{I_{t_s}}
-\label{eq:backward_prop}
-\end{equation}
-其中${}^{I_{t_e}}\Rmat_{I_{t_s}},{}^{I_{t_e}}\pvec_{I_{t_s}}$由$t_e$至$t_s$的~IMU~反向积分获得。
-
-\subsubsection{点到平面观测模型}
-
-对于去畸变后的每个激光点，利用当前~IEKF~迭代的状态估计$\hat{\xvec}^{\kappa}$将其变换至世界系，并在~ikd-Tree~地图中搜索最近的~5~个邻域点。对这~5~个点进行平面拟合，得到平面法向量$\mathbf{n}_j$及中心点$\mathbf{q}_j$，其中法向量为邻域点协方差矩阵最小特征值对应的特征方向。定义点到平面距离残差：
-\begin{equation}
-z_j^{\kappa} = \mathbf{n}_j^{\mathsf{T}}\Big({}^{\!G}\Rmat_I^{\kappa}\big({}^{I}\Rmat_L\,{}^{L}\mathbf{p}_j + {}^{I}\pvec_L\big) + {}^{\!G}\pvec_I^{\kappa} - \mathbf{q}_j\Big)
-\label{eq:residual}
-\end{equation}
-残差$|z_j^{\kappa}|$超过阈值的匹配点被视为外点并剔除。对所有有效匹配点堆叠残差向量$\mathbf{z}^{\kappa}=[z_1^{\kappa},\ldots,z_m^{\kappa}]^{\mathsf{T}}$，在当前估计处线性化得到观测雅可比$\mathbf{H}^{\kappa}=\partial\mathbf{z}^{\kappa}/\partial\delta\xvec$，其中$\delta\xvec$为切空间上的误差状态扰动。
-
-\subsubsection{迭代卡尔曼更新}
-
-FAST-LIO2~采用等价卡尔曼增益公式，将矩阵求逆的复杂度从测量维度降至$24$维状态维度。第$\kappa$次迭代的更新律为：
-\begin{align}
-\mathbf{K}^{\kappa} &= \big((\mathbf{H}^{\kappa})^{\mathsf{T}}\mathbf{R}^{-1}\mathbf{H}^{\kappa} + \hat{\Pcal}^{-1}\big)^{-1}(\mathbf{H}^{\kappa})^{\mathsf{T}}\mathbf{R}^{-1} \label{eq:iekf_gain} \\[2pt]
-\hat{\xvec}^{\kappa+1} &= \hat{\xvec}^{\kappa} \boxplus \Big(-\mathbf{K}^{\kappa}\mathbf{z}^{\kappa} - (\mathbf{I} - \mathbf{K}^{\kappa}\mathbf{H}^{\kappa})(\hat{\xvec}^{\kappa} \boxminus \hat{\xvec}^{0})\Big) \label{eq:iekf_update}
-\end{align}
-其中$\hat{\Pcal}$为前向传播得到的先验协方差矩阵，$\mathbf{R}=\sigma^{2}\mathbf{I}$为~LiDAR~测量噪声协方差，取$\sigma=0.001$，$\boxplus$与$\boxminus$分别为流形上的广义加法与减法，在$SO(3)$和$S^2$分量上自动处理旋转与球面约束的非线性结构。$\hat{\xvec}^{0}$为前向传播得到的先验状态，项$(\hat{\xvec}^{\kappa}\boxminus\hat{\xvec}^{0})$起到先验约束的作用，防止迭代偏离传播结果过远。
-
-收敛后更新后验协方差：
-\begin{equation}
-\Pcal = (\mathbf{I} - \mathbf{K}\mathbf{H})\,\hat{\Pcal}
-\label{eq:iekf_cov}
-\end{equation}
-更新后的状态将作为下一轮~IMU~前向传播的起点。
-
-\subsection{高频里程计输出}
-
-上述~IEKF~在每帧~LiDAR~到达时以 $10\,\text{Hz}$ 对状态进行一次校正，但在两帧~LiDAR~之间约 $100\,\text{ms}$ 的间隙内，仅依靠~IMU~的前向传播来维持位姿估计。IMU~以$200\,\text{Hz}$提供了约~20~次惯性测量，系统利用中值积分法将这些测量实时转化为高频里程计输出，以$200\,\text{Hz}$持续向前传播位姿、速度与姿态。
-
-对于相邻两次~IMU~测量 $t_k\to t_{k+1}$，间隔 $\Delta t=5\,\text{ms}$，取角速度与加速度的测量均值以抑制高频噪声：
-\begin{equation}
-\bar{\mathbf{a}} = \frac{\mathbf{a}_m(t_k) + \mathbf{a}_m(t_{k+1})}{2},\qquad
-\bar{\boldsymbol{\omega}} = \frac{\boldsymbol{\omega}_m(t_k) + \boldsymbol{\omega}_m(t_{k+1})}{2}
-\end{equation}
-
-首先利用去偏的角速度均值更新姿态。令$\operatorname{Exp}(\boldsymbol{\phi})$为$SO(3)$上的指数映射，将旋转向量$\boldsymbol{\phi}$映射为旋转矩阵，其方向为旋转轴、模长为旋转角：
-\begin{equation}
-{}^{\!G}\Rmat_I(t_{k+1}) = {}^{\!G}\Rmat_I(t_k)\,\operatorname{Exp}\!\big((\bar{\boldsymbol{\omega}} - \mathbf{b}_\omega)\,\Delta t\big)
-\label{eq:quat_prop}
-\end{equation}
-
-随后采用两步中点法合成世界系下的加速度。首先将$t_k$时刻的加速度旋转至世界系：
-\begin{equation}
-\mathbf{a}_{w,0} = {}^{\!G}\Rmat_I(t_k)\,(\mathbf{a}_m(t_k) - \mathbf{b}_a) + {}^{\!G}\mathbf{g}
-\end{equation}
-待姿态经式(\ref{eq:quat_prop})更新至$t_{k+1}$后，在$t_{k+1}$姿态下计算：
-\begin{equation}
-\mathbf{a}_{w,1} = {}^{\!G}\Rmat_I(t_{k+1})\,(\mathbf{a}_m(t_{k+1}) - \mathbf{b}_a) + {}^{\!G}\mathbf{g}
-\end{equation}
-取两帧世界加速度的均值作为该步的等效加速度，用于速度与位置的二阶精度积分：
-\begin{align}
-{}^{\!G}\vvec_I(t_{k+1}) &= {}^{\!G}\vvec_I(t_k) + \frac{\mathbf{a}_{w,0} + \mathbf{a}_{w,1}}{2}\,\Delta t \label{eq:vel_prop} \\
-{}^{\!G}\pvec_I(t_{k+1}) &= {}^{\!G}\pvec_I(t_k) + {}^{\!G}\vvec_I(t_k)\,\Delta t
-   + \frac{1}{2}\cdot\frac{\mathbf{a}_{w,0} + \mathbf{a}_{w,1}}{2}\,\Delta t^2 \label{eq:pos_prop}
-\end{align}
-上述前向传播在每次~IMU~回调中执行，对外提供与~IMU~同频的$200\,\text{Hz}$里程计。$10\,\text{Hz}$的~IEKF~校正输出则作为该高频里程计的基准参考，用于修正传播过程中的累积漂移。
-% ---- end of state_estimation.tex ----
 
 \subsection{动作捕捉系统融合}
 \section{集群建图、路径规划与轨迹优化：EGO-Swarm}
-
-\subsection{概述}
-Diff-Planner 是面向四旋翼无人机局部轨迹规划的模块，由 EGO-Planner-v2~\cite{zhou2022swarm} 改进而来，主要由以下三个子模块构成：
-\begin{enumerate}
-    \item \textbf{栅格地图：} 基于 FAST-LIO2 输出的降采样点云，通过 Raycast 算法构建概率占据栅格地图；
-    \item \textbf{路径规划：} 基于 A* 算法在栅格地图中搜索一条从当前位置到目标点的无碰撞引导路径点序列；
-    \item \textbf{轨迹优化：} 基于GCOPTER~\cite{wang2022gcopter}轨迹优化框架，以 A* 路径点序列和膨胀占据栅格为约束，通过 L-BFGS 求解平滑、动力学可行的局部轨迹。
-\end{enumerate}
-
-\subsection{栅格地图构建}
-
-\subsubsection{FAST-LIO2 点云输入}
-Diff-Planner 的建图模块订阅 FAST-LIO2 发布的降采样世界系点云。原始点云经过采样后仍能提供高分辨率栅格地图所需的障碍物信息，同时有效降低了后续 Raycast 操作的射线数量和计算开销。
-
-\subsubsection{概率占据栅格与 Raycast}
-系统采用 Log-Odds 概率更新模型对每个栅格单元进行占据概率估计。核心操作基于体素遍历算法：从激光雷达原点出发，沿各射线方向逐个穿越栅格单元，被激光点击中的终末栅格增加占据概率，射线穿透的中间栅格降低占据概率。更新公式为：
-\begin{equation}
-    L(m_i \mid z_{1:t}) = L(m_i \mid z_{1:t-1}) + L(m_i \mid z_t)
-\end{equation}
-其中 $L(\cdot) = \log\frac{p}{1-p}$ 为 Log-Odds 变换，$m_i$ 为第 $i$ 个栅格单元，$z_t$ 为当前帧点云量测。概率值被箝位在 $[p_{\min},p_{\max}]$ 区间，通过 $p_{\text{occ}}$ 阈值判定占据状态。
-
-在占据栅格的基础上，系统进一步构建膨胀占据栅格：对每个栅格统计其膨胀半径内的占据栅格数量，形成整数计数的稠密距离场。后续轨迹优化的障碍物约束即通过查询该膨胀计数值来实现。
-
-Mid-360 采用非重复扫描机制，不存在传统多线激光雷达的物理扫描线概念，其点云在不同积分时间具有不同的视场覆盖率。对此，Diff-Planner 在点云进入栅格地图更新前每隔 3 点取 1 点进行大幅降采样，以均衡不同视场区域的点密度差异，避免 Raycast 射线数量因中心区域过密而急剧膨胀。除此之外，系统还对距离机体 $0.3\,\text{m}$ 以内的近场点做盲区过滤，消除机身遮挡产生的无效回波。对于非重复扫描缺乏固定线束结构的问题，代码中按等效参数 $\texttt{scan\_line}=4$ 对点云进行伪线束划分，用于后续邻域搜索中的法向量估计。
-
-\subsection{前端路径规划 A* 搜索}
-
-A* 搜索在占据栅格地图上生成从当前位置到目标点的无碰撞路径点序列。算法维护开放集与关闭集两个集合，每次从开放集中选取估价函数最低的节点扩展：
-\begin{equation}
-f(n) = g(n) + h(n)
-\end{equation}
-其中 $g(n)$ 为从起点到节点 $n$ 的实际路径代价，各步取相邻栅格间的欧氏距离
-\begin{equation}
-d=\sqrt{\Delta x^2+\Delta y^2+\Delta z^2}.
-\end{equation}
-$h(n)$ 为对角线启发式，即从 $n$ 到终点的三维对角线距离估计。扩展时在 26-邻域内搜索，每个维度取 $\{-1,0,+1\}$ 的笛卡尔积，跳过占据栅格。已关闭节点和超出局部地图边界的节点不再访问。搜索被限制在 $0.2\,\text{s}$ 的时间预算内，超时则放弃本次规划。
-
-对 A* 终点或起点落入占据栅格内部的情况，算法沿起点-终点连线方向逐步外推，直至到达空闲栅格。A* 被限制在 $0.2\,\text{s}$ 的时间预算内完成搜索，超时则放弃本次规划以避免阻塞主循环。
-
-\subsection{轨迹优化后端}
-
-\subsubsection{MINCO 轨迹参数化}
-
-轨迹优化采用 MINCO 框架，将轨迹在时间上分为 $N$ 段，每段为 $2s-1$ 阶多项式。本系统取 $s=3$ 对应最小 jerk 控制，每段为 5 次多项式，在分段点处施加位置、速度、加速度的连续约束。优化变量为中间路径点位置 $\bm{q}_i\in\mathbb{R}^3$ 与各段虚拟时间参数 $T_i$，轨迹的完整空间-时间形态由此两个紧凑向量唯一确定。令 $\operatorname{Exp}$ 为时间参数的虚拟映射以保证 $T_i>0$ 的无约束优化：
-\begin{equation}
-T_i = \begin{cases}
-(0.5\tau_i+1)\tau_i+1, & \tau_i > 0 \\
-1 / ((0.5\tau_i-1)\tau_i+1), & \tau_i \leq 0
-\end{cases}
-\end{equation}
-优化变量总数为 $3(N-1)+N$。多项式系数矩阵 $\mathbf{c}_i\in\mathbb{R}^{6\times 3}$ 由 $\{\bm{q}_i,T_i\}$ 通过闭式线性映射唯一确定，使得轨迹的位置 $p(t)$、速度 $v(t)$、加速度 $a(t)$、jerk $j(t)$ 可由系数直接解析求值：
-\begin{equation}
-p(t) = \mathbf{c}_i^{\mathsf{T}}\,\big[1,\,t,\,t^2,\,t^3,\,t^4,\,t^5\big]^{\mathsf{T}},\qquad
-v(t) = \mathbf{c}_i^{\mathsf{T}}\,\big[0,\,1,\,2t,\,3t^2,\,4t^3,\,5t^4\big]^{\mathsf{T}},\quad\ldots
-\end{equation}
-
-\subsubsection{障碍物约束}
-
-对于 A* 路径点序列的每对相邻点，在膨胀占据栅格上检测初始轨迹的碰撞状态。当某段轨迹的控制点落入占据区域时，以 A* 路径为参考计算障碍物边界的基点 $\mathbf{b}_j$ 和方向 $\mathbf{d}_j$，其中基点位于自由空间与占据空间的交界处，方向由基点指向障碍物内部。对每个约束控制点$\mathbf{p}$，定义沿约束方向的穿透距离：
-\begin{equation}
-d = (\mathbf{p} - \mathbf{b}_j)\cdot \mathbf{d}_j
-\end{equation}
-约束代价为穿透距离违反安全间隙 $\delta$ 的三次罚函数：
-\begin{equation}
-J_{\text{obs}}(\mathbf{p}) = \sum_{j} w_{\text{obs}}\,\max(0,\;\delta - d)^3 + w_{\text{soft}}\,\sqrt{1 + \max(0,\;\delta_{\text{soft}} - d)^2 / r^2}
-\end{equation}
-其中 $\delta$ 为硬约束障碍物间隙，$\delta_{\text{soft}}$ 为软约束间隙，$r$ 为软约束光滑半径。基点处障碍物判据直接查询膨胀占据栅格计数值，该计数为膨胀半径内占据栅格的数量，正比于到最近障碍物的距离。
-
-\subsubsection{优化问题与求解}
-
-完整的轨迹优化目标函数包含四项：
-综上，完整的轨迹优化问题可表述为如下形式：
-\begin{align}
-\min_{\mathbf{q}_i,\,T_i}\quad & \int_{0}^{\Sigma T_i} \|\mathbf{j}(t)\|^2 dt \;+\; w_{\text{time}}\sum_{i=1}^{N} T_i \;+\; w_{\text{sqrvar}}\cdot\operatorname{Var}\big(\|\mathbf{c}_{k+1}-\mathbf{c}_k\|^2\big) \nonumber\\
-& \;+\; \sum_{k\in\mathcal{C}} w_{\text{obs}}\max(0,\delta-d_k)^3 \;+\; w_{\text{soft}}\sqrt{1+\max(0,\delta_{\text{soft}}-d_k)^2/r^2} \nonumber\\
-& \;+\; w_{\text{feas}}\sum_{t\in\mathcal{S}}\Big(\max(0,\|\mathbf{v}(t)\|^2-v_{\max}^2)^3 \nonumber\\
-&\qquad\qquad\;+\max(0,\|\mathbf{a}(t)\|^2-a_{\max}^2)^3+\max(0,\|\mathbf{j}(t)\|^2-j_{\max}^2)^3\Big) \\
-\text{s.t.}\quad & \mathbf{p}(t)=\mathbf{c}_i^{\mathsf{T}}[1,t,t^2,t^3,t^4,t^5]^{\mathsf{T}},\;t\in[0,T_i],\;i=1,\ldots,N \nonumber\\
-& \mathbf{p}^{(0,1,2)}(T_i^-)=\mathbf{p}^{(0,1,2)}(T_i^+),\quad i=1,\ldots,N-1 \nonumber\\
-& T_i > 0,\quad i=1,\ldots,N \nonumber
-\end{align}
-其中 $\mathcal{C}$ 为与障碍物发生碰撞的控制点索引集，$d_k=(\mathbf{p}_k-\mathbf{b}_j)\cdot\mathbf{d}_j$ 为沿约束方向的穿透距离；$\mathcal{S}$ 为轨迹上的采样时间点集；$\operatorname{Var}$ 为相邻控制点间距平方的方差，用于压制轨迹形状的剧烈曲折。上述问题为无约束非线性规划（除 $T_i>0$ 通过虚拟时间映射 $\tau_i\leftrightarrow T_i$ 自动满足），所有约束均以软罚函数形式并入目标，利用 MINCO 框架的解析梯度由 L-BFGS 求解。
-
-优化结束后，MINCO 轨迹直接以解析形式输出四旋翼的平坦状态量，包括位置 $p(t)$、速度 $v(t)$、加速度 $a(t)$ 和 jerk $j(t)$，作为连续时间的全状态参考，直接提供给底层飞行控制器作为前馈输入。
-
-偏航角 $\psi(t)$ 与偏航角速率 $\dot{\psi}(t)$ 不在 MINCO 优化变量中，而是由轨迹服务器 $\texttt{traj\_server}$ 独立计算。其策略为前视方向跟踪：取当前时刻前方 $\texttt{time\_forward}$ 秒处的轨迹位置与本时刻位置的连线方向作为期望偏航角 $\psi_d = \operatorname{atan2}(\Delta y,\Delta x)$，使无人机机头始终指向飞行方向。当存在外部偏航指令且最近一次指令在 $0.5\,\text{s}$ 以内时，系统优先使用该自定义偏航角以支持遥控器或上层任务的手动航向控制。偏航角速率和角加速度受限于预设上限，在实际飞行中为 $\dot{\psi}_{\max}= \pi\,\text{rad/s}$ 和 $\ddot{\psi}_{\max}=2\pi\,\text{rad/s}^2$，超出上限时系统沿速率斜坡逼近目标值以防止指令跳变。
 
 \section{基于PID的无人机姿态与位置控制：PX4-Ctrl}
 
@@ -313,6 +112,7 @@ J_{\text{obs}}(\mathbf{p}) = \sum_{j} w_{\text{obs}}\,\max(0,\;\delta - d)^3 + w
 \section{光电云台扫描实现}
 
 \section{基于Voronoi地图的多智能体封控围捕算法Intercepting Rogue Robots}
+
 
 \subsection{Matlab算法仿真实现}
 
@@ -485,7 +285,55 @@ roslaunch car3_swarm voronoi_air_ground_pursuit.launch intruder_mode:=mixed
 \endgroup
 
 \subsection{仿真验证}
+\subsubsection{围捕逻辑}
+\subsubsection{参与单位}
+\begin{itemize}
+\item 追捕者：car0,car1,iris0,iris1
+\item 单车入侵：car2
+\item 双车入侵：car2,car3
+\item 单机入侵：iris2
+\item 双机入侵：iris2,iris3
+\item 混合入侵：car2,iris2
+\end{itemize}
 
+\subsubsection{入场和逃逸（以一种双车入侵为例）}
+\begin{itemize}
+\item \texttt{car2} 从左侧入口进入；
+\item \texttt{car3} 从右侧入口进入；
+\item 入侵车进入 $6\,\mathrm{m}$ 正方形前按 launch 中的 \texttt{intruder\_routes} 行驶；
+\item 入侵车进入后，以自身有界 Voronoi 元胞质心方向生成逃逸目标；
+\item 追捕者优先前往与入侵车相邻的共享 Voronoi 边中点；若不相邻，则追向最近的活动入侵车；
+\item 所有目标被限制在边界内，并保留 \texttt{target\_margin}。
+\end{itemize}
+\subsubsection{捕获判据}
+对每辆已进入房间的活动入侵车，计算其与四个追捕者的二维平面距离：
+
+\begin{equation}
+d_i = \sqrt{(x_i-x_{\mathrm{evader}})^2+(y_i-y_{\mathrm{evader}})^2}
+\end{equation}
+
+满足以下条件即捕获：
+
+\begin{equation}
+\min_i d_i \leq d_{\mathrm{capture}}
+\end{equation}
+
+当前 launch 默认 $d_{\mathrm{capture}}=0.5\,\mathrm{m}$。捕获后：
+\begin{enumerate}
+\item 发布捕获者、实际距离和该入侵车入场后的捕获用时；
+\item 将被捕获车辆移动到场景外 $(x\approx100, y=100, z=-10)$，不直接删除
+\texttt{ros\_control} 模型，以避免 \texttt{gzserver} 死锁；
+\item 若仍有另一辆入侵车，继续追捕；
+\item 所有入侵车捕获后停止两辆追捕车，并让两架 UAV 进入 HOVER。
+\end{enumerate}
+
+
+结果示例：
+
+\begin{verbatim}
+CAPTURED car2 by iris_0 at planar distance 0.287 m; capture time 18.627 s
+ALL CAPTURED in 22.431 s | ...
+\end{verbatim}
 \subsection{代码仓库}
 https://github.com/Ctrl-CVCV/XTDrone/tree/XTDrone
 \section{实机平台及验证}
@@ -502,13 +350,9 @@ https://github.com/Ctrl-CVCV/XTDrone/tree/XTDrone
 
 \subsection{实验结果（用表格表示）}
 
-将图片放入 \texttt{figures} 目录后，可以使用下面的结构插入：
-
-\begin{verbatim}
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.8\textwidth]{example.png}
-  \caption{示例图片}
-  \label{fig:example}
-\end{figure}
-\end{verbatim}
+\subsection{实验结果分析与未来可改进点}
+\begin{itemize}
+\item 为Voronoi围捕增加避障逻辑，更加贴合货物大量堆积的仓库场景
+\item 中心化通信对地面站通信压力大，后面考虑改成基于B.A.T.M.A的分布式通信，减少对地面站的依赖
+\item 目前无人机和无人车的速度差异较大，后续考虑增加无人机的速度限制，或者增加无人车的速度
+\end{itemize}
