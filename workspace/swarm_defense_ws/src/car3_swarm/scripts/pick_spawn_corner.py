@@ -47,10 +47,14 @@ def main():
         corner = rng.choice(["CORNER_0", "CORNER_1"])
     else:
         corner = (args.corner or intruder["fixed_corner"]).upper()
-        if corner not in ("CORNER_0", "CORNER_1"):
+        if corner not in ("CORNER_0", "CORNER_1", "CORNER_2"):
             sys.exit("unknown corner %r" % corner)
 
-    key = "spawn_corner_0" if corner == "CORNER_0" else "spawn_corner_1"
+    key = {
+        "CORNER_0": "spawn_corner_0",
+        "CORNER_1": "spawn_corner_1",
+        "CORNER_2": "spawn_corner_2",
+    }[corner]
     x, y, yaw = intruder[key]
     print(corner)
     print("%.4f" % x)

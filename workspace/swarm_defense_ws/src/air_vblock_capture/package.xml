@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>air_vblock_capture</name>
+  <version>0.1.0</version>
+  <description>
+    两机两车围捕一机（V 型封控）：两架防御 UAV 在逃逸轴前方 V 型封堵，
+    两辆小车在逃逸轴后方 V 型封堵，捕获判定仅由两架 UAV（纯 2D）完成。
+    独立方案，不影响现有 car3_swarm Voronoi 围捕。
+  </description>
+  <maintainer email="liuhanxu@example.com">liuhanxu</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>gazebo_msgs</exec_depend>
+  <exec_depend>mavros_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+</package>

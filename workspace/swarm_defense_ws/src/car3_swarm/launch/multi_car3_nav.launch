@@ -11,8 +11,8 @@
     <arg name="car1_x" default="-2.3"/>
     <arg name="car1_y" default="-2.4"/>
     <arg name="car1_yaw" default="0.808"/>
-    <arg name="car2_x" default="-6.5"/>
-    <arg name="car2_y" default="6.6"/>
+    <arg name="car2_x" default="-4.92"/>
+    <arg name="car2_y" default="4.52"/>
     <arg name="car2_yaw" default="0.0"/>
     <arg name="start_bringup" default="true"/>
     <arg name="car2_max_vel_trans" default="0.25"/>
@@ -108,7 +108,7 @@
         </node>
     </group>
 
-    <!-- car2: intruder, NW outer corner -->
+    <!-- car2: intruder, NW floor parking spot (top-left 停车位) -->
     <group ns="car2">
         <node name="amcl" pkg="amcl" type="amcl" output="screen"
               launch-prefix="bash -c 'timeout 90 rostopic echo -n1 /car2/scan &gt;/dev/null 2&gt;&amp;1 || true; exec $0 $@'">

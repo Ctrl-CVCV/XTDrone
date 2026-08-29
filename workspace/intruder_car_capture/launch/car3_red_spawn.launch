@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Spawn car3_red (car3 chassis + red intruder marker on roof) into the ALREADY
+     running gazebo (world started separately by run_car_world.sh).
+     Car is static for viewpoint capture; no controllers/mecanum needed.
+     robot_description points at the preprocessed car3_red.urdf (marker appended). -->
+<launch>
+  <arg name="x" default="0"/>
+  <arg name="y" default="0"/>
+  <arg name="yaw" default="0"/>
+
+  <param name="robot_description"
+         textfile="/home/dev/XTDrone-single-car/workspace/intruder_car_capture/urdf/car3_red.urdf"/>
+
+  <node name="spawn_car3" pkg="gazebo_ros" type="spawn_model"
+        args="-x $(arg x) -y $(arg y) -z 0.01 -Y $(arg yaw)
+              -param robot_description -urdf -model car3_red"
+        output="screen"/>
+</launch>

@@ -62,7 +62,7 @@
     </model>
 
     <include>
-      <uri>model://nesting_room</uri>
+      <uri>model://nesting_room_mesh</uri>
       <pose>0 0 0 0 0 0</pose>
     </include>
 

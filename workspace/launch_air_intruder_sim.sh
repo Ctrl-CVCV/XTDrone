@@ -3,7 +3,7 @@
 # 空中入侵无人机统一仿真启动脚本（Phase 3）
 #
 # 用法（宿主终端）:
-#   docker exec -it xtdrone-dev bash /workspace/launch_air_intruder_sim.sh [--spawn-mode random|fixed] [--corner CORNER_0|CORNER_1] [--gui|--headless]
+#   docker exec -it xtdrone-dev bash /workspace/launch_air_intruder_sim.sh [--spawn-mode random|fixed] [--corner CORNER_0|CORNER_1|CORNER_2] [--uav-speed <m/s>] [--uav-acc <m/s2>] [--intruder-speed <m/s>] [--intruder-acc <m/s2>] [--gui|--headless]
 #
 # 功能:
 #   1. 清理残留仿真
@@ -22,14 +22,26 @@ LOG=/tmp/air_intruder_sim.log
 export DISPLAY=${DISPLAY:-:1}
 
 SPAWN_MODE=fixed
-CORNER="CORNER_1"
+CORNER="CORNER_2"
+# EGO 最大速度/加速度：
+#   --uav-speed/--uav-acc        作用于 iris_0/iris_1（防御 UAV）
+#   --intruder-speed/--intruder-acc  作用于 iris_2（入侵 UAV）
+# 默认 0.75/0.8 = 当前生效配置，不传参时与既有 Voronoi 方案行为完全一致
+UAV_SPEED=0.75
+UAV_ACC=0.8
+INTRUDER_SPEED=0.75
+INTRUDER_ACC=0.8
 GUI=1
 
-usage() { echo "用法: $0 [--spawn-mode random|fixed] [--corner CORNER_0|CORNER_1] [--gui|--headless]"; exit 1; }
+usage() { echo "用法: $0 [--spawn-mode random|fixed] [--corner CORNER_0|CORNER_1|CORNER_2] [--uav-speed <m/s>] [--uav-acc <m/s2>] [--intruder-speed <m/s>] [--intruder-acc <m/s2>] [--gui|--headless]"; exit 1; }
 while [ $# -gt 0 ]; do
     case "$1" in
         --spawn-mode) SPAWN_MODE="$2"; shift 2 ;;
         --corner) CORNER="$2"; shift 2 ;;
+        --uav-speed) UAV_SPEED="$2"; shift 2 ;;
+        --uav-acc) UAV_ACC="$2"; shift 2 ;;
+        --intruder-speed) INTRUDER_SPEED="$2"; shift 2 ;;
+        --intruder-acc) INTRUDER_ACC="$2"; shift 2 ;;
         --gui) GUI=1; shift ;;
         --headless) GUI=0; shift ;;
         *) usage ;;
@@ -84,11 +96,14 @@ say "启动 multi_vehicle.launch（GUI=$GUI）..."
 GUI_ARG="gui:=false"
 [ "$GUI" = 1 ] && GUI_ARG="gui:=true"
 nohup roslaunch $LAUNCH $GUI_ARG start_car_nav:=true start_ego:=true \
+    uav_pursuit_max_vel:=$UAV_SPEED uav_pursuit_max_acc:=$UAV_ACC \
+    uav_intruder_max_vel:=$INTRUDER_SPEED uav_intruder_max_acc:=$INTRUDER_ACC \
     iris2_x:=$IRIS2_X iris2_y:=$IRIS2_Y iris2_yaw:=$IRIS2_YAW \
     iris2_corner:=$CORNER_NAME >"$LOG" 2>&1 &
 
 echo "$CORNER_NAME" > /tmp/air_intruder_spawn_corner.txt
 say "已启动（PID $!），日志 $LOG"
+say "防御 UAV(iris_0/1) EGO max_vel=$UAV_SPEED acc=$UAV_ACC；入侵 iris_2 max_vel=$INTRUDER_SPEED acc=$INTRUDER_ACC"
 say "iris_2 出生角写入 /tmp/air_intruder_spawn_corner.txt"
 say "继续: get_local_pose.py iris 3 -> ego_swarm_transfer.py iris 3 -> uav_offboard_takeoff.py --altitude 4.0 --timeout 180"
 say "然后: roslaunch car3_swarm air_intruder_pursuit.launch"

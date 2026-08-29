@@ -1,0 +1,11 @@
+<launch>
+  <!-- 两机两车围捕一机（V 型封控，独立方案） -->
+  <arg name="auto_start" default="true"/>
+  <arg name="entry_side" default=""/>  <!-- 空=用 YAML；可传 UP/DOWN/LEFT/RIGHT 覆盖 -->
+  <node pkg="air_vblock_capture" type="vblock_capture_node.py" name="vblock_capture"
+        output="screen" respawn="false">
+    <rosparam file="$(find air_vblock_capture)/config/vblock_mission.yaml" command="load"/>
+    <param name="auto_start" value="$(arg auto_start)"/>
+    <param name="entry_side" value="$(arg entry_side)"/>
+  </node>
+</launch>

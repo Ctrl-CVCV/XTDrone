@@ -12,15 +12,17 @@ uav:
 # ---- iris_2 出生位置 ----
 intruder:
   spawn_mode: fixed       # 用户要求固定出生，不再随机
-  fixed_corner: CORNER_1  # 固定左下角（西南角）外墙 (-5.0, -5.0)
-  # 外墙四个角中选定的两个可用角落（Gazebo 世界坐标 + 朝向 yaw）：
-  # CORNER_0 = 东北角，CORNER_1 = 西南角；均向内缩安全余量，不在墙体几何角点上。
-  # 朝向 yaw 固定为 -pi/2（朝 DOWN 门/南，以门命名为基准；与固定朝向桥配合，出生起不转向）
+  fixed_corner: CORNER_2  # 固定右下角（东南角）外墙停机坪 (5.2, -4.9)
+  # 外墙可用角落（Gazebo 世界坐标 + 朝向 yaw；均向内缩安全余量，不在墙体几何角点上）：
+  # CORNER_0 = 东北角 (5.0,5.0)，CORNER_1 = 西南角 (-5.0,-5.0)，CORNER_2 = 东南角停机坪 (5.2,-4.9)。
+  # 朝向 yaw 约定：-pi/2 朝 DOWN 门/南；CORNER_2 用 pi 朝西（朝向房间内/DOWN 门方向）。
+  # 与固定朝向桥配合，出生起不转向。
   spawn_corner_0: [5.0, 5.0, -1.5708]
   spawn_corner_1: [-5.0, -5.0, -1.5708]
+  spawn_corner_2: [5.2, -4.9, 3.1416]
   # 入侵方向：UP | DOWN | LEFT | RIGHT；第一版固定，跑通后随机
   entry_mode: fixed       # fixed | random
-  entry_side: UP          # CORNER_0（东北角）相邻方向：UP | RIGHT（LEFT/DOWN 需走廊路由 Phase 9）
+  entry_side: DOWN        # CORNER_2（东南角）相邻方向：DOWN | RIGHT（CORNER_1 用 DOWN | LEFT）
   random_seed: 0          # seed>0 可复现随机序列；0=时间种子
   approach_offset: 1.2    # 内墙外侧待机点距墙段中心线的距离 (m)
   inside_offset: 1.2      # 穿墙后内点距墙段中心线的距离 (m)
@@ -42,16 +44,21 @@ intruder:
 # ---- 围捕阵型（第 9/10/11 节）----
 formation:
   uav_forward_offset: 1.5   # 两架防御 UAV 在逃逸方向前方的距离 d_uf
-  uav_lateral_offset: 2.0   # 两架防御 UAV 横向展开距离 d_us
+  uav_lateral_offset: 1.5   # 两架防御 UAV 横向展开距离 d_us
   ugv_rear_offset: 1.2      # 两辆 UGV 在投影后方的距离 d_gf
-  ugv_lateral_offset: 2.0   # 两辆 UGV 横向展开距离 d_gs
-  ugv_margin: 0.4           # UGV 阵型点相对内区边界的收缩余量 (m)
-  uav_margin: 0.8           # UAV 目标相对内区边界的收缩余量 (m)；H_f=1.33 低于 3m 墙，禁止越墙封口。
+  ugv_lateral_offset: 1.2   # 两辆 UGV 横向展开距离 d_gs
+  ugv_margin: 0.6           # UGV 阵型点相对内区边界的收缩余量 (m)
+  uav_margin: 0.9           # UAV 目标相对内区边界的收缩余量 (m)；H_f=1.33 低于 3m 墙，禁止越墙封口。
                           # 0.8 较 0.5 更安全：CORNER_0 复测中 iris_0 贴墙(0.39m)下降，目标贴 0.5 余量时 EGO 过冲
+  # ---- ENCIRCLED 紧阵型偏移（相对 iris_2 逃逸方向 e 与法向 n；捕获前收缩逼近用）----
+  encircle_uav_forward: 0.5   # 紧阵型两 UAV 在逃逸方向前方的距离 (m)
+  encircle_uav_lateral: 0.5   # 紧阵型两 UAV 横向展开距离 (m)
+  encircle_ugv_lateral: 0.5   # 紧阵型两 UGV 贴 iris_2 地面投影两侧 ±该值 (m)；R_g=0.5 与之匹配，
+                              #     捕获触发时小车须已在入侵机正下方
 
 # ---- 捕获判定（第 14 节）----
 capture:
-  air_capture_radius: 1.8   # R_c：两架防御 UAV 均须到入侵 UAV 的 XY 距离 < 该值（用户 2026-08-26：2.0→1.8）
+  air_capture_radius: 2.0   # R_c：两架防御 UAV 均须到入侵 UAV 的 XY 距离 < 该值（用户 2026-08-26：2.0→1.8）
   ground_projection_radius: 0.5  # R_g：两辆 UGV 到入侵 UAV 地面投影的距离 < 该值；tight 阵型小车贴机 ±0.3m，0.5 与之匹配，
                                  #     确保捕获触发时小车已在入侵机正下方（用户 2026-08-26：直接收在机下）
   hold_time: 2.0            # T_hold：以上条件需持续保持的时间 (s)
@@ -62,7 +69,7 @@ capture:
 #      挖掉正对侧的 Voronoi 元胞，把逃逸质心拉回内区并放慢，避免冲向门口）----
 gate_seal:
   enabled: true
-  trigger_dist: 1.8   # iris_2 距某条边界线小于该值触发封堵 (m)
+  trigger_dist: 1.5   # iris_2 距某条边界线小于该值触发封堵 (m)
   inset: 1.0          # 堵头 UAV 自 iris_2 沿指向边界方向推进的距离 (m)，不越过边界线
   dwell: 1.5          # 封堵侧承诺停留时间 (s)：期间不随 iris_2 摆动切换侧，防堵头目标大跳变
   heading_cos: 0.3    # 逃逸方向与边界外法向点积下限，只有朝边界飞才封堵，避免无谓调位

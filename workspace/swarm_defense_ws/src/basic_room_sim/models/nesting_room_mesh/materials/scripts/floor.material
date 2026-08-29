@@ -1,0 +1,18 @@
+// 地面贴纸（地皮）：map.png 作为嵌套房地面纹理。
+// 由 vblock 任务引入。未照亮，让贴图颜色原样显示（贴图本身已烘焙明暗）。
+material room_floor
+{
+  technique
+  {
+    pass
+    {
+      lighting off
+      scene_blend replace
+      texture_unit
+      {
+        texture map_ground.png
+        scale 1.0 1.0
+      }
+    }
+  }
+}

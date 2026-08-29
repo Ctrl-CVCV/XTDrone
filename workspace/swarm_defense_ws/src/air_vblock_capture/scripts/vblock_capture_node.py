@@ -1,14 +1,28 @@
 #!/usr/bin/env python3
-"""Air-intruder pursuit: two defender UAVs + two defender UGVs vs one intruder UAV.
+"""V-block capture: two defender UAVs (front V) + two defender UGVs (rear V)
+vs one intruder UAV.
 
-iris_2 (intruder UAV) spawns in one of two outer-wall corners, takes off to the
-uniform altitude H_f, stages at its corner, then flies over the real 3m inner
-wall into the protected area.  When its world XY transitions outside->inside the
-inner region, AIR_INTRUSION_DETECTED fires.
+iris_2 (intruder) spawns in an outer-wall corner, takes off to the uniform
+altitude H_f, stages at its corner, then flies over the 3m inner wall (through
+the entry gate gap) into the protected area. When its world XY transitions
+outside -> inside the inner region, AIR_INTRUSION_DETECTED fires.
 
-Phase 3 scope: WAITING -> TAKEOFF -> STAGING -> INTRUDER_APPROACH ->
-AIR_INTRUSION_DETECTED.  Later phases (5-9) extend PURSUIT / ENCIRCLED /
-CAPTURED / ESCAPED behind this node on the same FSM.
+After intrusion the mission enters CONTAINMENT (ported from the two-car "area
+containment" scheme):
+  - escape axis e from iris_2's 2D velocity direction (fallback to the current
+    chosen escape gate direction); smoothed.
+  - iris_2 selects an escape gate (all gates except the entry gate) via cost
+    scoring + hysteresis switching.
+  - UAVs take front V-blocking points  PL/PR = pE + df_uav*e +/- ds_uav*n
+    (roles locked once on entry).
+  - UGVs pincer the intruder's ground projection  CL/CR = pE +/- ds_car*n
+    (n = normal to iris_2's own 2D velocity, low-speed fallback toward the
+    inner region centre -- decoupled from the air escape axis; motion only,
+    never part of the capture judgement).
+  - capture = both UAVs within R_c (XY only, no altitude) + bilateral blocking
+    (z_A*z_B<0) + at least one UAV ahead of the escape axis, held T_hold.
+  - escape = iris_2 leaves the inner region (FAILED_ESCAPE through a valid
+    gate, INVALID_ESCAPE through the original entry gate).
 
 Coordinate conventions:
   - All tactical math uses Gazebo world XY (from /gazebo/model_states).
@@ -65,93 +79,6 @@ def inside_inner(point, region):
     return xmin <= point[0] <= xmax and ymin <= point[1] <= ymax
 
 
-# --------------------------------------------------------------------------
-# 几何助手（与 voronoi_air_ground_pursuit.py 同源，Phase 5-8 复用）
-# --------------------------------------------------------------------------
-def clip_polygon_halfplane(polygon, a, b, c, eps=1e-9):
-    """Clip a polygon by a*x + b*y <= c (Sutherland-Hodgman)."""
-    if not polygon:
-        return []
-    result = []
-    previous = polygon[-1]
-    previous_f = a * previous[0] + b * previous[1] - c
-    previous_inside = previous_f <= eps
-    for current in polygon:
-        current_f = a * current[0] + b * current[1] - c
-        current_inside = current_f <= eps
-        if current_inside != previous_inside:
-            denominator = previous_f - current_f
-            if abs(denominator) > 1e-12:
-                t = previous_f / denominator
-                result.append(
-                    (
-                        previous[0] + t * (current[0] - previous[0]),
-                        previous[1] + t * (current[1] - previous[1]),
-                    )
-                )
-        if current_inside:
-            result.append(current)
-        previous = current
-        previous_f = current_f
-        previous_inside = current_inside
-    return deduplicate_polygon(result)
-
-
-def deduplicate_polygon(polygon, tolerance=1e-8):
-    result = []
-    for point in polygon:
-        if not result or math.hypot(
-            point[0] - result[-1][0], point[1] - result[-1][1]
-        ) > tolerance:
-            result.append(point)
-    if len(result) > 1 and math.hypot(
-        result[0][0] - result[-1][0], result[0][1] - result[-1][1]
-    ) <= tolerance:
-        result.pop()
-    return result
-
-
-def bounded_voronoi_cell(points, index, bounds):
-    """Return one Voronoi cell clipped to rectangular bounds."""
-    xmin, xmax, ymin, ymax = bounds
-    polygon = [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)]
-    px, py = points[index]
-    for other_index, (qx, qy) in enumerate(points):
-        if other_index == index:
-            continue
-        a = 2.0 * (qx - px)
-        b = 2.0 * (qy - py)
-        c = qx * qx + qy * qy - px * px - py * py
-        if abs(a) + abs(b) < 1e-12:
-            continue
-        polygon = clip_polygon_halfplane(polygon, a, b, c)
-        if not polygon:
-            break
-    return polygon
-
-
-def polygon_centroid(polygon):
-    if len(polygon) < 3:
-        if not polygon:
-            return None
-        return (
-            sum(point[0] for point in polygon) / len(polygon),
-            sum(point[1] for point in polygon) / len(polygon),
-        )
-    twice_area = 0.0
-    centroid_x = 0.0
-    centroid_y = 0.0
-    for index, start in enumerate(polygon):
-        end = polygon[(index + 1) % len(polygon)]
-        cross = start[0] * end[1] - end[0] * start[1]
-        twice_area += cross
-        centroid_x += (start[0] + end[0]) * cross
-        centroid_y += (start[1] + end[1]) * cross
-    if abs(twice_area) < 1e-10:
-        return None
-    return (centroid_x / (3.0 * twice_area), centroid_y / (3.0 * twice_area))
-
-
 def clamp_point(point, bounds, margin):
     xmin, xmax, ymin, ymax = bounds
     return (
@@ -160,89 +87,34 @@ def clamp_point(point, bounds, margin):
     )
 
 
-def convex_hull(points):
-    """Monotone-chain convex hull (CCW), dedup duplicates."""
-    pts = sorted(set(points))
-    if len(pts) <= 1:
-        return pts
-
-    def cross(o, a, b):
-        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
-    lower = []
-    for p in pts:
-        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
-            lower.pop()
-        lower.append(p)
-    upper = []
-    for p in reversed(pts):
-        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
-            upper.pop()
-        upper.append(p)
-    return lower[:-1] + upper[:-1]
+def point_segment_distance(p, a, b):
+    """点到线段 ab 的最近距离。"""
+    px, py = p
+    ax, ay = a
+    bx, by = b
+    dx, dy = bx - ax, by - ay
+    length_sq = dx * dx + dy * dy
+    if length_sq == 0.0:
+        t = 0.0
+    else:
+        t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length_sq))
+    cx, cy = ax + t * dx, ay + t * dy
+    return math.hypot(px - cx, py - cy)
 
 
-def polygon_area(polygon):
-    if len(polygon) < 3:
-        return 0.0
-    return 0.5 * abs(
-        sum(
-            polygon[i][0] * polygon[(i + 1) % len(polygon)][1]
-            - polygon[(i + 1) % len(polygon)][0] * polygon[i][1]
-            for i in range(len(polygon))
-        )
-    )
-
-
-def point_in_polygon(point, polygon):
-    """Ray-casting point-in-polygon test (works for any simple polygon)."""
-    x, y = point
-    inside = False
-    n = len(polygon)
-    j = n - 1
-    for i in range(n):
-        xi, yi = polygon[i]
-        xj, yj = polygon[j]
-        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
-            inside = not inside
-        j = i
-    return inside
-
-
-def point_polygon_distance(point, polygon):
-    """点到凸多边形边界的最近距离；点在内部时返回 0。"""
-    if point_in_polygon(point, polygon):
-        return 0.0
-    x, y = point
-    best = float("inf")
-    n = len(polygon)
-    for i in range(n):
-        ax, ay = polygon[i]
-        bx, by = polygon[(i + 1) % n]
-        dx, dy = bx - ax, by - ay
-        length_sq = dx * dx + dy * dy
-        if length_sq == 0.0:
-            t = 0.0
-        else:
-            t = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / length_sq))
-        cx, cy = ax + t * dx, ay + t * dy
-        best = min(best, math.hypot(x - cx, y - cy))
-    return best
-
-
-class AirIntruderPursuit:
+class VblockCapture:
     WAITING = "WAITING"
     TAKEOFF = "TAKEOFF"
     STAGING = "STAGING"
     INTRUDER_APPROACH = "INTRUDER_APPROACH"
     AIR_INTRUSION_DETECTED = "AIR_INTRUSION_DETECTED"
-    PURSUIT = "PURSUIT"
-    ENCIRCLED = "ENCIRCLED"
+    CONTAINMENT = "CONTAINMENT"
     CAPTURED = "CAPTURED"
-    ESCAPED = "ESCAPED"
+    FAILED_ESCAPE = "FAILED_ESCAPE"
+    INVALID_ESCAPE = "INVALID_ESCAPE"
 
     def __init__(self):
-        rospy.init_node("air_intruder_pursuit")
+        rospy.init_node("vblock_capture")
 
         # ---- YAML 参数（launch 已 rosparam load 到 ~）----
         self.uav_altitude = rospy.get_param("~uav/fixed_altitude", 4.0)
@@ -269,16 +141,23 @@ class AirIntruderPursuit:
         self.inside_offset = rospy.get_param("~intruder/inside_offset", 1.2)
         self.entry_arrive = rospy.get_param("~intruder/entry_arrive", 0.4)
         # 到达外墙外侧待机点后需等待无人机真正停稳再发布进内部目标，否则 EGO 会带着
-        # 到达方向的横向动量重规划入场轨迹（CORNER_0 西偏/UP、CORNER_1 东偏/DOWN，实测
-        # 可偏出门洞 1m+ 撞墙）。停稳判定：水平速度持续低于 entry_speed_eps 且至少停留
-        # approach_settle 秒；entry_speed_cap 为最迟推进上限（防悬停抖动永不达标卡死）。
+        # 到达方向的横向动量重规划入场轨迹（可偏出门洞撞墙）。
         self.approach_settle = rospy.get_param("~intruder/approach_settle", 1.2)
         self.entry_speed_eps = rospy.get_param("~intruder/entry_speed_eps", 0.1)
         self.entry_speed_hold = rospy.get_param("~intruder/entry_speed_hold", 0.4)
         self.entry_speed_cap = rospy.get_param("~intruder/entry_speed_cap", 6.0)
-        # 门洞中心线预对齐点：比待机点更靠外，使"预对齐点 -> 待机点"这一段沿门中心线进场，
-        # 消除 EGO 重规划携带的到达方向横向偏置（CORNER_0 西偏 / CORNER_1 东偏撞门框）。
         self.approach_pre_extra = rospy.get_param("~intruder/approach_pre_extra", 2.0)
+
+        # 逃逸出口评分与滞回
+        self.exit_switch_margin = rospy.get_param("~intruder/exit_switch_margin", 0.5)
+        self.exit_switch_hold_time = rospy.get_param(
+            "~intruder/exit_switch_hold_time", 0.8
+        )
+        self.w_dist = rospy.get_param("~intruder/escape_weight_dist", 1.0)
+        self.w_pursuer = rospy.get_param("~intruder/escape_weight_pursuer", 1.2)
+        self.w_obstacle = rospy.get_param("~intruder/escape_weight_obstacle", 0.8)
+        # 逃逸轴速度阈值：iris_2 速度低于该值 → 逃逸轴回退到目标门方向
+        self.v_eps = rospy.get_param("~intruder/v_eps", 0.3)
 
         self.tactical_rate = rospy.get_param("~planning/tactical_rate", 15.0)
         self.goal_rate = rospy.get_param("~planning/goal_publish_rate", 3.0)
@@ -289,44 +168,21 @@ class AirIntruderPursuit:
             "~planning/re_goal_interval", 5.0
         )
 
-        self.uav_forward_offset = rospy.get_param("~formation/uav_forward_offset", 1.5)
-        self.uav_lateral_offset = rospy.get_param("~formation/uav_lateral_offset", 2.0)
-        self.ugv_rear_offset = rospy.get_param("~formation/ugv_rear_offset", 1.2)
-        self.ugv_lateral_offset = rospy.get_param("~formation/ugv_lateral_offset", 2.0)
-        self.ugv_margin = rospy.get_param("~formation/ugv_margin", 0.4)
-        # UAV 贴墙安全余量：H_f=1.33 低于 3m 墙，UAV 无法越墙，目标必须 clamp 在
-        # 内区边界内 uav_margin 处，否则封堵/紧阵型目标落在墙面上会被 EGO 规划撞墙。
-        # 0.8 较 0.5 更安全：CORNER_0 复测 iris_0 贴墙(0.39m)下降，目标贴 0.5 余量时 EGO 过冲。
-        self.uav_margin = rospy.get_param("~formation/uav_margin", 0.8)
-        # ENCIRCLED 紧阵型偏移（相对逃逸方向 e / 法向 n），YAML formation 可调
-        self.encircle_uav_forward = rospy.get_param("~formation/encircle_uav_forward", 0.4)
-        self.encircle_uav_lateral = rospy.get_param("~formation/encircle_uav_lateral", 0.6)
-        self.encircle_ugv_lateral = rospy.get_param("~formation/encircle_ugv_lateral", 0.3)
+        self.uav_forward_offset = rospy.get_param("~containment/uav_forward_offset", 1.0)
+        self.uav_lateral_offset = rospy.get_param("~containment/uav_lateral_offset", 1.0)
+        self.ugv_lateral_offset = rospy.get_param("~containment/ugv_lateral_offset", 1.0)
+        self.uav_margin = rospy.get_param("~containment/uav_margin", 0.9)
+        self.ugv_margin = rospy.get_param("~containment/ugv_margin", 0.6)
+        self.role_lock = rospy.get_param("~containment/role_lock", True)
+        self.e_smooth = rospy.get_param("~containment/e_smooth", 0.6)
 
         self.air_capture_radius = rospy.get_param("~capture/air_capture_radius", 1.5)
-        self.ground_projection_radius = rospy.get_param(
-            "~capture/ground_projection_radius", 1.0
-        )
         self.hold_time = rospy.get_param("~capture/hold_time", 2.0)
-        self.encircle_min_area = rospy.get_param("~capture/encircle_min_area", 0.5)
-        # 包围判定边界余量：iris_2 在凸包边界附近振荡时，避免捕获计时因 enc 抖动清零
-        self.encircle_margin = rospy.get_param("~capture/encircle_margin", 0.3)
-
-        self.evasion_min_speed = rospy.get_param("~intruder/evasion_min_speed", 0.5)
-        self.evasion_cell_margin = rospy.get_param("~intruder/evasion_cell_margin", 0.1)
-
-        self.gate_seal_enabled = rospy.get_param("~gate_seal/enabled", True)
-        self.gate_seal_trigger = rospy.get_param("~gate_seal/trigger_dist", 1.8)
-        self.gate_seal_inset = rospy.get_param("~gate_seal/inset", 1.0)
-        self.gate_seal_dwell = rospy.get_param("~gate_seal/dwell", 1.5)
-        self.gate_seal_heading_cos = rospy.get_param("~gate_seal/heading_cos", 0.3)
+        self.bilateral_blocking = rospy.get_param("~capture/bilateral_blocking", True)
 
         self.intrusion_debounce = rospy.get_param("~fsm/intrusion_debounce", 0.3)
         self.auto_start = rospy.get_param("~fsm/auto_start", True)
         self.start_delay = rospy.get_param("~fsm/start_delay", 1.0)
-        self.encircle_fallback_delay = rospy.get_param(
-            "~fsm/encircle_fallback_delay", 1.5
-        )
 
         inner = rospy.get_param(
             "~inner_region",
@@ -349,9 +205,7 @@ class AirIntruderPursuit:
         if self.entry_side not in ENTRY_GATES:
             rospy.logwarn("unknown entry side %r; using LEFT", self.entry_side)
             self.entry_side = "LEFT"
-        # 只允许与出生角落相邻的墙作为入侵方向：非相邻方向直线飞越内区会提前触发入侵
-        # （EGO 在 H_f 处越过 3m 虚拟墙，XY 投影先进入内区）。跨角落方向留待 Phase 9
-        # 走廊路由 + 临时加高墙再支持。
+        # 只允许与出生角落相邻的墙作为入侵方向（直线走廊段不跨越内区）。
         direct = CORNER_ENTRY_DIRECT[self.spawn_corner]
         if self.entry_side not in direct:
             fallback = direct[0]
@@ -364,6 +218,8 @@ class AirIntruderPursuit:
             )
             self.entry_side = fallback
         self.crossing_side = self.entry_side
+        # 合法逃逸门 = 全部门 \ 入侵门（§4.2）
+        self.valid_escape_gates = [g for g in ENTRY_GATES if g != self.entry_side]
 
         # 出生角落 + 入侵方向 -> 走廊段路线（全程 XY 停留在外环，approach 不提前入侵）
         self.staging_outside = self._wall_outside_point(self.entry_side)
@@ -381,38 +237,33 @@ class AirIntruderPursuit:
         self.approach_step = 0
         self.approach_goal_sent = False
         self.staging_arrived_at = None
-        self.staging_last_fast_at = None  # 待机点处上次水平速度仍高于 eps 的时刻（单调时钟）
-        self.evader_last_pos = None       # 上一拍 iris_2 世界 XY（水平速度估计）
+        self.staging_last_fast_at = None
+        self.evader_last_pos = None
         self.evader_last_pos_at = None
         self.was_inside = False
         self.inside_since = None
         self.intrusion_fired_at = None
-        self.hold_goals = {}  # 需要持续保持的目标（世界 XY）
+        self.hold_goals = {}
         self.last_publish_time = {}
         self.published_targets = {}
         self.last_targets = {}
         self.goal_connection_counts = {name: 0 for name in ALL_AGENTS}
 
-        # ---- Phase 5-9 围捕状态 ----
+        # ---- CONTAINMENT 状态 ----
         self.uav_left = "iris_0"
         self.uav_right = "iris_1"
         self.ugv_left = "car0"
         self.ugv_right = "car1"
         self.pursuit_started_at = None
-        self.evasion_target = None
         self.evader_vel_history = []
-        self.encircle_hull = []
+        self.e_axis = None
+        self.last_velocity_dir = None
+        self.current_escape_gate = None
+        self.best_gate_since = None
+        self.last_gate_costs = {}
         self.capture_hold_started = None
         self.last_hold_publish = 0.0
-        self.last_pursuit_targets = {}
-        self.gate_seal_active = False
-        self.gate_seal_side = None
-        self.gate_seal_blocker = None
-        self.last_seal_side = None
-        self.last_seal_blocker = None
-        self.seal_committed_side = None
-        self.seal_commit_until = 0.0
-        self.encircle_lost_since = None
+        self.last_containment_targets = {}
 
         # ---- 发布/订阅 ----
         self.goal_publishers = {
@@ -426,13 +277,13 @@ class AirIntruderPursuit:
             for name in UAVS + (EVADER,)
         }
         self.state_publisher = rospy.Publisher(
-            "/air_intruder/pursuit/state", String, queue_size=1, latch=True
+            "/vblock_capture/state", String, queue_size=1, latch=True
         )
         self.result_publisher = rospy.Publisher(
-            "/air_intruder/pursuit/result", String, queue_size=1, latch=True
+            "/vblock_capture/result", String, queue_size=1, latch=True
         )
         self.marker_publisher = rospy.Publisher(
-            "/air_intruder/pursuit/markers", MarkerArray, queue_size=1
+            "/vblock_capture/markers", MarkerArray, queue_size=1
         )
 
         rospy.Subscriber(
@@ -454,15 +305,17 @@ class AirIntruderPursuit:
                 queue_size=1,
             )
 
-        rospy.Service("/air_intruder/pursuit/start", Trigger, self._start_service)
+        rospy.Service("/vblock_capture/start", Trigger, self._start_service)
         self.state_publisher.publish(String(self.state))
         self.timer = rospy.Timer(rospy.Duration(1.0 / self.tactical_rate), self._tick)
         rospy.loginfo(
-            "air_intruder_pursuit ready: corner=%s entry=%s H_f=%.1f region=%s",
+            "vblock_capture ready: corner=%s entry=%s H_f=%.1f region=%s "
+            "escape_gates=%s",
             self.spawn_corner,
             self.entry_side,
             self.uav_altitude,
             self.inner_region,
+            self.valid_escape_gates,
         )
 
     # ------------------------------------------------------------------ 数据
@@ -497,7 +350,6 @@ class AirIntruderPursuit:
             and self.uav_states[name].mode == "OFFBOARD"
             for name in UAVS + (EVADER,)
         )
-        # UAV EGO 必须在线；UGV Nav 缺省时仅警告（Phase 3 车辆只保持位姿）
         uav_subscribers_ready = all(
             self.goal_publishers[name].get_num_connections() > 0
             for name in UAVS + (EVADER,)
@@ -518,14 +370,14 @@ class AirIntruderPursuit:
     # ------------------------------------------------------------------ 启动
     def _start_service(self, _request):
         if self.started:
-            return TriggerResponse(False, "pursuit already started")
+            return TriggerResponse(False, "mission already started")
         if not self._ready():
             return TriggerResponse(
                 False,
                 "not ready: need all agents + EGO/Nav subscribers + 3 UAVs OFFBOARD+armed",
             )
         self._begin()
-        return TriggerResponse(True, "air intruder pursuit started")
+        return TriggerResponse(True, "vblock capture mission started")
 
     def _begin(self):
         self.started = True
@@ -541,7 +393,7 @@ class AirIntruderPursuit:
         for name in UAVS + (EVADER,):
             self.uav_cmd_publishers[name].publish(String(data="OFFBOARD"))
         rospy.loginfo(
-            "air intruder mission started: %s from corner %s",
+            "vblock capture mission started: %s from corner %s",
             self.entry_side,
             self.spawn_corner,
         )
@@ -550,7 +402,7 @@ class AirIntruderPursuit:
         if self.state != state:
             self.state = state
             self.state_publisher.publish(String(state))
-            rospy.loginfo("Air intruder state -> %s", state)
+            rospy.loginfo("Vblock state -> %s", state)
 
     # ------------------------------------------------------------------ 目标
     def _wall_outside_point(self, side):
@@ -600,9 +452,8 @@ class AirIntruderPursuit:
         )
 
     def _send_goal(self, name, target):
-        """目标发送门控（第 18 节）：目标明显变化立即发；
-        目标不变但智能体未到位时按 re_goal_interval 周期重发，
-        否则卡住的 agent 一旦目标稳定就再也收不到 goal。"""
+        """目标发送门控：目标明显变化立即发；目标不变但未到位时按 re_goal_interval
+        周期重发，否则卡住的 agent 一旦目标稳定就再也收不到 goal。"""
         now = time.monotonic()
         elapsed = now - self.last_publish_time.get(name, 0.0)
         if elapsed < 1.0 / self.goal_rate:
@@ -649,12 +500,14 @@ class AirIntruderPursuit:
         elif self.state == self.INTRUDER_APPROACH:
             self._run_approach()
         elif self.state == self.AIR_INTRUSION_DETECTED:
-            self._begin_pursuit()
-        elif self.state == self.PURSUIT:
-            self._run_pursuit()
-        elif self.state == self.ENCIRCLED:
-            self._run_encircled()
-        elif self.state in (self.CAPTURED, self.ESCAPED):
+            self._begin_containment()
+        elif self.state == self.CONTAINMENT:
+            self._run_containment()
+        elif self.state in (
+            self.CAPTURED,
+            self.FAILED_ESCAPE,
+            self.INVALID_ESCAPE,
+        ):
             self._hold_terminal()
 
         self._publish_markers()
@@ -720,13 +573,12 @@ class AirIntruderPursuit:
         return speed
 
     def _run_approach(self):
-        # 全程监控 outside -> inside 过渡（Phase 4），不因路线走完而跳过
+        # 全程监控 outside -> inside 过渡（入侵检测），不因路线走完而跳过
+        self._update_evader_velocity()
         point = self._position_xy(EVADER)
         now_inside = inside_inner(point, self.inner_region)
         now = time.monotonic()
         speed = self._evader_speed()
-        # 注意：was_inside 一旦置 True，后续 inside tick 会走 else 重置 inside_since，
-        # 导致 debounce 永不完成。改为：只要持续在内，计时器保持；离开才重置。
         if now_inside:
             if self.inside_since is None:
                 self.inside_since = now
@@ -744,9 +596,7 @@ class AirIntruderPursuit:
         self._send_goal(EVADER, step)
         if planar_distance(point, step) <= self.entry_arrive:
             if self.approach_step == 1:
-                # 先让无人机在待机点真正停稳（水平速度持续低于阈值）再发进内部目标：
-                # 若在仍带到达方向横向速度时切换目标，EGO 重规划会把该动量带进出场轨迹，
-                # 偏出门洞（CORNER_0 西偏 UP / CORNER_1 东偏 DOWN，实测 1m+）撞门框。
+                # 先让无人机在待机点真正停稳（水平速度持续低于阈值）再发进内部目标。
                 if self.staging_arrived_at is None:
                     self.staging_arrived_at = now
                     self.staging_last_fast_at = now
@@ -788,20 +638,18 @@ class AirIntruderPursuit:
         self._set_state(self.AIR_INTRUSION_DETECTED)
         message = (
             "AIR_INTRUSION_DETECTED: iris_2 at world (%.3f, %.3f, %.3f), "
-            "z=%.2f > wall=%.2f, side=%s"
+            "side=%s"
             % (
                 point[0],
                 point[1],
                 self._uav_altitude(EVADER),
-                self._uav_altitude(EVADER),
-                self.wall_height,
                 self.crossing_side,
             )
         )
         self.result_publisher.publish(String(message))
         rospy.logwarn(message)
 
-    # ------------------------------------------------------------------ Phase 5-9
+    # ------------------------------------------------------------------ CONTAINMENT
     def _current_yaw(self, name):
         q = self.model_poses[name].orientation
         return math.atan2(
@@ -819,11 +667,13 @@ class AirIntruderPursuit:
         x, y = self._position_xy(EVADER)
         now = time.monotonic()
         self.evader_vel_history.append((x, y, now))
-        if len(self.evader_vel_history) > 3:
+        if len(self.evader_vel_history) > 6:
             self.evader_vel_history.pop(0)
 
     def _escape_direction(self):
-        """单位逃逸方向：优先当前 XY 速度，速度过小时用逃逸质心目标方向（第 8 节）。"""
+        """逃逸轴 e：严格取 iris_2 实际二维速度方向；速度低于 v_eps 时回退到最近
+        一次有效飞行方向（保持连续性），仅当从未测到速度时才回退到目标门方向。
+        对 e 做指数平滑防机动抖动。"""
         p = self._position_xy(EVADER)
         vx = vy = 0.0
         if len(self.evader_vel_history) >= 2:
@@ -834,300 +684,298 @@ class AirIntruderPursuit:
                 vx = (x1 - x0) / dt
                 vy = (y1 - y0) / dt
         speed = math.hypot(vx, vy)
-        if speed >= self.evasion_min_speed:
-            return (vx / speed, vy / speed)
-        target = self.evasion_target or p
-        dx = target[0] - p[0]
-        dy = target[1] - p[1]
+        if speed >= self.v_eps:
+            e_new = (vx / speed, vy / speed)
+            self.last_velocity_dir = e_new
+        elif self.last_velocity_dir is not None:
+            e_new = self.last_velocity_dir
+        elif self.current_escape_gate is not None:
+            pG = ENTRY_GATES[self.current_escape_gate]
+            dx = pG[0] - p[0]
+            dy = pG[1] - p[1]
+            norm = math.hypot(dx, dy)
+            e_new = (dx / norm, dy / norm) if norm > 1e-6 else (1.0, 0.0)
+        else:
+            e_new = (1.0, 0.0)
+        if self.e_axis is None:
+            self.e_axis = e_new
+        else:
+            k = self.e_smooth
+            ex = self.e_axis[0] * (1.0 - k) + e_new[0] * k
+            ey = self.e_axis[1] * (1.0 - k) + e_new[1] * k
+            norm = math.hypot(ex, ey)
+            self.e_axis = (ex / norm, ey / norm) if norm > 1e-9 else e_new
+        return self.e_axis
+
+    def _car_flank_normal(self):
+        """小车夹击翼展法向 n（左法向）：垂直于 iris_2 自身二维速度；速度低于 v_eps
+        时回退到朝向内区中心。只依赖入侵机运动，与空中逃逸门/UAV 捕获解耦——
+        两车分别朝 pE +/- ds*n 横向夹击入侵机地面投影。"""
+        p = self._position_xy(EVADER)
+        vx = vy = 0.0
+        if len(self.evader_vel_history) >= 2:
+            (x0, y0, t0) = self.evader_vel_history[0]
+            (x1, y1, t1) = self.evader_vel_history[-1]
+            dt = t1 - t0
+            if dt > 0.05:
+                vx = (x1 - x0) / dt
+                vy = (y1 - y0) / dt
+        speed = math.hypot(vx, vy)
+        if speed >= self.v_eps:
+            self.last_velocity_dir = (vx / speed, vy / speed)
+            return (-vy / speed, vx / speed)
+        if self.last_velocity_dir is not None:
+            lx, ly = self.last_velocity_dir
+            return (-ly, lx)
+        cx = 0.5 * (self.inner_region[0] + self.inner_region[1])
+        cy = 0.5 * (self.inner_region[2] + self.inner_region[3])
+        dx, dy = cx - p[0], cy - p[1]
         norm = math.hypot(dx, dy)
         if norm < 1e-6:
-            return (1.0, 0.0)
-        return (dx / norm, dy / norm)
+            return (0.0, 1.0)
+        return (-dy / norm, dx / norm)
 
-    def _nearest_boundary(self, point):
-        """内区四条边界线中离 point 最近的一条，返回 (side, 到边界距离)。"""
-        x, y = point
-        xmin, xmax, ymin, ymax = self.inner_region
-        candidates = (
-            ("UP", ymax - y),
-            ("DOWN", y - ymin),
-            ("RIGHT", xmax - x),
-            ("LEFT", x - xmin),
-        )
-        return min(candidates, key=lambda c: c[1])
+    def _gate_cost(self, gate, pE):
+        """逃逸出口代价 J_i = w_d*d(E,G_i) + w_p*J_pursuer + w_o*J_obstacle。
+        J_pursuer = 各追捕者到"E->门"路径线段的 1/(d+0.6) 之和：追捕者越贴近逃逸路径代价越大。
+        J_obstacle v1 预留恒为 0（被堵已计入 J_pursuer）。"""
+        pG = ENTRY_GATES[gate]
+        j_dist = planar_distance(pE, pG)
+        j_pursuer = 0.0
+        for name in PURSUERS:
+            if name not in self.model_poses:
+                continue
+            p = self._position_xy(name)
+            seg = point_segment_distance(p, pE, pG)
+            j_pursuer += 1.0 / (seg + 0.6)
+        return self.w_dist * j_dist + self.w_pursuer * j_pursuer + self.w_obstacle * 0.0
 
-    def _seal_point(self, point, side, dist):
-        """影子封堵点：point 沿指向边界的方向推进 dist，且停在边界内 uav_margin 处。
-        堵头 UAV 仍处在 iris_2 与其逼近的边界之间，挖掉正对侧的元胞；
-        但不越过边界线，也不把目标压在墙面上（H_f=1.33 低于 3m 墙，
-        目标贴墙会被 EGO 规划撞墙）。"""
-        x, y = point
-        xmin, xmax, ymin, ymax = self.inner_region
-        m = self.uav_margin
-        if side == "UP":
-            return (x, min(y + dist, ymax - m))
-        if side == "DOWN":
-            return (x, max(y - dist, ymin + m))
-        if side == "LEFT":
-            return (max(x - dist, xmin + m), y)
-        if side == "RIGHT":
-            return (min(x + dist, xmax - m), y)
-        return (x, y)
+    def _select_escape_gate(self):
+        """每周期选代价最小门，带滞回（仅当 J_new < J_cur - margin 且优势持续
+        hold_time 才切换，防每帧反复换门）。"""
+        pE = self._position_xy(EVADER)
+        costs = {g: self._gate_cost(g, pE) for g in self.valid_escape_gates}
+        best = min(costs, key=costs.get)
+        now = time.monotonic()
+        if self.current_escape_gate is None:
+            self.current_escape_gate = best
+            self.best_gate_since = None
+            rospy.loginfo("escape gate init -> %s", best)
+        elif best != self.current_escape_gate:
+            if costs[best] < costs[self.current_escape_gate] - self.exit_switch_margin:
+                if self.best_gate_since is None:
+                    self.best_gate_since = now
+                elif now - self.best_gate_since >= self.exit_switch_hold_time:
+                    rospy.logwarn(
+                        "escape gate switch %s -> %s (J %.2f vs %.2f)",
+                        self.current_escape_gate,
+                        best,
+                        costs[best],
+                        costs[self.current_escape_gate],
+                    )
+                    self.current_escape_gate = best
+                    self.best_gate_since = None
+            else:
+                self.best_gate_since = None
+        else:
+            self.best_gate_since = None
+        self.last_gate_costs = costs
+        return self.current_escape_gate
 
-    def _evasion_target(self):
-        """iris_2 逃逸目标：五智能体 bounded Voronoi 元胞质心（第 7 节），限内区。"""
-        agents = CARS + UAVS + (EVADER,)
-        points = [self._position_xy(name) for name in agents]
-        index = agents.index(EVADER)
-        cell = bounded_voronoi_cell(points, index, self.inner_region)
-        centroid = polygon_centroid(cell)
-        if centroid is None:
-            centroid = points[index]
-        return clamp_point(centroid, self.inner_region, self.evasion_cell_margin)
+    def _evasion_goal(self):
+        """iris_2 逃逸目标：当前目标门中心，收敛在内区边界内侧一点（越线即判逃逸）。"""
+        if self.current_escape_gate is None:
+            return clamp_point(self._position_xy(EVADER), self.inner_region, 0.05)
+        pG = ENTRY_GATES[self.current_escape_gate]
+        return clamp_point(pG, self.inner_region, 0.05)
 
-    def _compute_pursuit_goals(self, tight):
-        """第 9/10 节阵型点；tight=True 为 ENCIRCLED 收缩阵型逼近捕获条件。"""
+    def _assign_roles(self):
+        """进入 CONTAINMENT 时按最小总距离分配 UAV 左右角色并锁定；
+        小车按最小总距离分配到"投影左右夹击点"（cl/cr）。"""
         pE = self._position_xy(EVADER)
         ex, ey = self._escape_direction()
         nx, ny = -ey, ex
-        evader_target = self._evasion_target()
-        self.evasion_target = evader_target
-        targets = {EVADER: evader_target}
-
-        if tight:
-            # H_f=1.33 低于 3m 虚拟墙，UAV 无法越墙，紧阵型目标必须 clamp 在内区
-            # （原 H_f=4.0 可越墙封口的假设已失效）。
-            ef = self.encircle_uav_forward
-            el = self.encircle_uav_lateral
-            gl = self.encircle_ugv_lateral
-            uav_l = clamp_point(
-                (pE[0] + ef * ex + el * nx, pE[1] + ef * ey + el * ny),
-                self.inner_region,
-                self.uav_margin,
-            )
-            uav_r = clamp_point(
-                (pE[0] + ef * ex - el * nx, pE[1] + ef * ey - el * ny),
-                self.inner_region,
-                self.uav_margin,
-            )
-            # 用户要求（2026-08-26）：捕获时小车应直接收在入侵机正下方（地面投影附近）。
-            # 两车对称贴在投影两侧 ±gl，既在机下又避免两车重叠；R_g=0.5 与之匹配。
-            ugv_l = clamp_point(
-                (pE[0] + gl * nx, pE[1] + gl * ny),
-                self.inner_region,
-                self.ugv_margin,
-            )
-            ugv_r = clamp_point(
-                (pE[0] - gl * nx, pE[1] - gl * ny),
-                self.inner_region,
-                self.ugv_margin,
-            )
-        else:
-            uav_l = clamp_point(
-                (
-                    pE[0] + self.uav_forward_offset * ex + self.uav_lateral_offset * nx,
-                    pE[1] + self.uav_forward_offset * ey + self.uav_lateral_offset * ny,
-                ),
-                self.inner_region,
-                self.uav_margin,
-            )
-            uav_r = clamp_point(
-                (
-                    pE[0] + self.uav_forward_offset * ex - self.uav_lateral_offset * nx,
-                    pE[1] + self.uav_forward_offset * ey - self.uav_lateral_offset * ny,
-                ),
-                self.inner_region,
-                self.uav_margin,
-            )
-            ugv_l = clamp_point(
-                (
-                    pE[0] - self.ugv_rear_offset * ex + self.ugv_lateral_offset * nx,
-                    pE[1] - self.ugv_rear_offset * ey + self.ugv_lateral_offset * ny,
-                ),
-                self.inner_region,
-                self.ugv_margin,
-            )
-            ugv_r = clamp_point(
-                (
-                    pE[0] - self.ugv_rear_offset * ex - self.ugv_lateral_offset * nx,
-                    pE[1] - self.ugv_rear_offset * ey - self.ugv_lateral_offset * ny,
-                ),
-                self.inner_region,
-                self.ugv_margin,
-            )
-
-        targets[self.uav_left] = uav_l
-        targets[self.uav_right] = uav_r
-        targets[self.ugv_left] = ugv_l
-        targets[self.ugv_right] = ugv_r
-
-        # ---- 边界封堵（仅 PURSUIT 宽松阵型）：iris_2 逼近边界且朝边界逃逸时，
-        # 把一架防御 UAV 调到其与边界之间的"影子"位（pE 向边界推进 inset，
-        # 不越过边界线），挖掉它正对侧 Voronoi 元胞，把逃逸质心拉回内区并放慢。
-        # ENCIRCLED 紧阵型本身封口，此时封堵只会拆散包围圈，故 tight 时禁用。
-        # 堵头选离影子点最近的一架 UAV（谁近谁最快到位，远者继续按阵型合围）；
-        # 封堵侧带停留时间，避免 iris_2 沿墙摆动时堵头目标快速大跳变（曾把
-        # EGO 重规划搞卡死，本会话 root cause）。 ----
-        seal_side, seal_dist = self._nearest_boundary(pE)
-        outward = {
-            "UP": (0.0, 1.0),
-            "DOWN": (0.0, -1.0),
-            "LEFT": (-1.0, 0.0),
-            "RIGHT": (1.0, 0.0),
-        }[seal_side]
-        heading = ex * outward[0] + ey * outward[1]
-        seal_on = (
-            self.gate_seal_enabled
-            and not tight
-            and seal_dist <= self.gate_seal_trigger
-            and heading >= self.gate_seal_heading_cos
+        df = self.uav_forward_offset
+        ds = self.uav_lateral_offset
+        pl = clamp_point(
+            (pE[0] + df * ex + ds * nx, pE[1] + df * ey + ds * ny),
+            self.inner_region,
+            self.uav_margin,
         )
-        now = time.monotonic()
-        if seal_on:
-            if self.seal_committed_side is None:
-                self.seal_committed_side = seal_side
-                self.seal_commit_until = now + self.gate_seal_dwell
-            elif seal_side == self.seal_committed_side:
-                self.seal_commit_until = now + self.gate_seal_dwell
-            elif now < self.seal_commit_until:
-                seal_side = self.seal_committed_side  # 停留期内保持已承诺侧
-            else:
-                self.seal_committed_side = seal_side
-                self.seal_commit_until = now + self.gate_seal_dwell
-        else:
-            self.seal_committed_side = None
-
-        self.gate_seal_active = seal_on
-        self.gate_seal_side = seal_side if seal_on else None
-        if seal_on:
-            seal_target = self._seal_point(pE, seal_side, self.gate_seal_inset)
-            s0 = planar_distance(self._position_xy(UAVS[0]), seal_target)
-            s1 = planar_distance(self._position_xy(UAVS[1]), seal_target)
-            blocker = UAVS[0] if s0 <= s1 else UAVS[1]
-            self.gate_seal_blocker = blocker
-            targets[blocker] = seal_target
-            if seal_side != self.last_seal_side or blocker != self.last_seal_blocker:
-                rospy.logwarn(
-                    "GATE SEAL: side=%s blocker=%s dist=%.2f goal=(%.2f, %.2f)",
-                    seal_side,
-                    blocker,
-                    seal_dist,
-                    seal_target[0],
-                    seal_target[1],
-                )
-        elif self.last_seal_side is not None or self.last_seal_blocker is not None:
-            rospy.logwarn("GATE SEAL off")
-        self.last_seal_side = seal_side if seal_on else None
-        self.last_seal_blocker = blocker if seal_on else None
-
-        self.last_pursuit_targets = targets
-        return targets
-
-    def _encircled_check(self):
-        """第 13 节：四追捕者凸包包含 iris_2 且面积不小于下限。
-        iris_2 落在凸包边界附近（encircle_margin 内）也算包围，避免边界振荡抖动。"""
-        hull = convex_hull([self._position_xy(name) for name in PURSUERS])
-        if len(hull) < 3 or polygon_area(hull) < self.encircle_min_area:
-            return False
-        return point_polygon_distance(self._position_xy(EVADER), hull) <= self.encircle_margin
-
-    def _begin_pursuit(self):
-        self.pursuit_started_at = time.monotonic()
-        self.capture_hold_started = None
-        self.evader_vel_history = []
-        self.evasion_target = None
-        pE = self._position_xy(EVADER)
-        self.evasion_target = self._evasion_target()
-        ex, ey = self._escape_direction()
-
-        def side_cross(name):
-            px, py = self._position_xy(name)
-            return ex * (py - pE[1]) - ey * (px - pE[0])
-
-        # 第一次围捕按相对逃逸方向的左右分配 UAV 角色并锁定（第 9 节）
-        if side_cross("iris_0") > side_cross("iris_1"):
+        pr = clamp_point(
+            (pE[0] + df * ex - ds * nx, pE[1] + df * ey - ds * ny),
+            self.inner_region,
+            self.uav_margin,
+        )
+        c1 = planar_distance(self._position_xy("iris_0"), pl) + planar_distance(
+            self._position_xy("iris_1"), pr
+        )
+        c2 = planar_distance(self._position_xy("iris_0"), pr) + planar_distance(
+            self._position_xy("iris_1"), pl
+        )
+        if c1 <= c2:
             self.uav_left, self.uav_right = "iris_0", "iris_1"
         else:
             self.uav_left, self.uav_right = "iris_1", "iris_0"
-        self.ugv_left, self.ugv_right = "car0", "car1"
-        self.encircle_hull = []
-        self._set_state(self.PURSUIT)
+
+        dsc = self.ugv_lateral_offset
+        gx, gy = self._car_flank_normal()
+        cl = clamp_point(
+            (pE[0] + dsc * gx, pE[1] + dsc * gy),
+            self.inner_region,
+            self.ugv_margin,
+        )
+        cr = clamp_point(
+            (pE[0] - dsc * gx, pE[1] - dsc * gy),
+            self.inner_region,
+            self.ugv_margin,
+        )
+        g1 = planar_distance(self._position_xy("car0"), cl) + planar_distance(
+            self._position_xy("car1"), cr
+        )
+        g2 = planar_distance(self._position_xy("car0"), cr) + planar_distance(
+            self._position_xy("car1"), cl
+        )
+        if g1 <= g2:
+            self.ugv_left, self.ugv_right = "car0", "car1"
+        else:
+            self.ugv_left, self.ugv_right = "car1", "car0"
+
+    def _compute_containment_goals(self):
+        """V 型封控目标：UAV 前方 V 点（PL/PR），小车对入侵机地面投影的横向夹击点
+        （CL/CR = pE +/- ds_car*n），iris_2 逃逸目标。全部 clamp 到内区安全余量内。"""
+        pE = self._position_xy(EVADER)
+        ex, ey = self._escape_direction()
+        nx, ny = -ey, ex
+        targets = {EVADER: self._evasion_goal()}
+
+        df = self.uav_forward_offset
+        ds = self.uav_lateral_offset
+        pl = clamp_point(
+            (pE[0] + df * ex + ds * nx, pE[1] + df * ey + ds * ny),
+            self.inner_region,
+            self.uav_margin,
+        )
+        pr = clamp_point(
+            (pE[0] + df * ex - ds * nx, pE[1] + df * ey - ds * ny),
+            self.inner_region,
+            self.uav_margin,
+        )
+        targets[self.uav_left] = pl
+        targets[self.uav_right] = pr
+
+        dsc = self.ugv_lateral_offset
+        gx, gy = self._car_flank_normal()
+        cl = clamp_point(
+            (pE[0] + dsc * gx, pE[1] + dsc * gy),
+            self.inner_region,
+            self.ugv_margin,
+        )
+        cr = clamp_point(
+            (pE[0] - dsc * gx, pE[1] - dsc * gy),
+            self.inner_region,
+            self.ugv_margin,
+        )
+        targets[self.ugv_left] = cl
+        targets[self.ugv_right] = cr
+
+        self.last_containment_targets = targets
+        return targets
+
+    def _begin_containment(self):
+        self.pursuit_started_at = time.monotonic()
+        self.capture_hold_started = None
+        # 保持 evader_vel_history 连续（approach 阶段已持续供样），CONTAINMENT 首帧
+        # 即能得到 iris_2 实际飞行方向，避免初始回退到门方向导致 V 点放在错误一侧。
+        self.e_axis = None
+        self.current_escape_gate = None
+        self.best_gate_since = None
+        self.last_containment_targets = {}
+        self._select_escape_gate()
+        self._assign_roles()
+        self._set_state(self.CONTAINMENT)
         rospy.logwarn(
-            "PURSUIT: roles uav_left=%s uav_right=%s ugv_left=%s ugv_right=%s",
+            "CONTAINMENT: escape_gates=%s uav_left=%s uav_right=%s "
+            "ugv_left=%s ugv_right=%s",
+            self.valid_escape_gates,
             self.uav_left,
             self.uav_right,
             self.ugv_left,
             self.ugv_right,
         )
-        targets = self._compute_pursuit_goals(tight=False)
+        targets = self._compute_containment_goals()
         for name, target in targets.items():
             self.published_targets.pop(name, None)
             self._send_goal(name, target)
 
-    def _run_pursuit(self):
+    def _run_containment(self):
         self._update_evader_velocity()
-        targets = self._compute_pursuit_goals(tight=False)
-        for name, target in targets.items():
-            self._send_goal(name, target)
-        if not inside_inner(self._position_xy(EVADER), self.inner_region):
-            self._finish_escaped()
-            return
-        if self._encircled_check():
-            self._begin_encircled()
-
-    def _begin_encircled(self):
-        self.capture_hold_started = None
-        self.encircle_lost_since = None
-        self._set_state(self.ENCIRCLED)
-        rospy.logwarn("ENCIRCLED: iris_2 inside pursuer convex hull")
-
-    def _run_encircled(self):
-        self._update_evader_velocity()
-        targets = self._compute_pursuit_goals(tight=True)
+        self._select_escape_gate()
+        if not self.role_lock:
+            self._assign_roles()
+        targets = self._compute_containment_goals()
         for name, target in targets.items():
             self._send_goal(name, target)
         pE = self._position_xy(EVADER)
-        self.encircle_hull = convex_hull(
-            [self._position_xy(name) for name in PURSUERS]
-        )
         if not inside_inner(pE, self.inner_region):
             self._finish_escaped()
             return
-        enc = self._encircled_check()
-        if not enc:
-            # 丢失包围持续超时则回退 PURSUIT：重新启用边界封堵，给 iris_2
-            # 冲出包围圈逼近边界时第二次封堵机会（run#4 曾 ENCIRCLED 下 48s
-            # enc 恒假、无封堵，最终 UP 门逃逸）。
-            if self.encircle_lost_since is None:
-                self.encircle_lost_since = time.monotonic()
-            elif time.monotonic() - self.encircle_lost_since >= self.encircle_fallback_delay:
-                rospy.logwarn(
-                    "ENCIRCLED lost containment for %.1fs -> fallback PURSUIT",
-                    self.encircle_fallback_delay,
-                )
-                self._begin_pursuit()
-                return
-        else:
-            self.encircle_lost_since = None
-        uav_min = min(planar_distance(self._position_xy(name), pE) for name in UAVS)
-        uav_max = max(planar_distance(self._position_xy(name), pE) for name in UAVS)
-        cars_max = max(
-            planar_distance(self._position_xy(name), pE) for name in CARS
+        self._check_capture()
+
+    def _check_capture(self):
+        """捕获判定（纯 2D，仅两架 UAV 为依据）：
+        max UAV 距离 <= R_c 且 双侧封堵 z_A*z_B<0 且 至少一架 UAV 在逃逸轴前方，
+        持续 T_hold。小车不参与。"""
+        pE = self._position_xy(EVADER)
+        ex, ey = self._escape_direction()
+        uav_max = max(planar_distance(self._position_xy(n), pE) for n in UAVS)
+        in_range = uav_max <= self.air_capture_radius
+
+        bilateral = True
+        if self.bilateral_blocking:
+            z = {}
+            for n in UAVS:
+                p = self._position_xy(n)
+                z[n] = ex * (p[1] - pE[1]) - ey * (p[0] - pE[0])
+            bilateral = z[UAVS[0]] * z[UAVS[1]] < 0
+
+        # 前方封堵：逃逸机已贴近所选逃逸门（距门中心 <= R_c）时，出口已被墙体与逼近
+        # 的追捕者双重封死；此时 uav_margin 收缩使无人机物理上无法绕到门内侧，原
+        # "ahead" 判定必然不满足（LEFT 门进犯实测 FAILED_ESCAPE 的根因）。故该场景
+        # 放宽为仅需双机逼近 + 双侧封堵即可判捕获；中段追逐仍保持原 ahead 判定。
+        gate_dist = (
+            planar_distance(pE, ENTRY_GATES[self.current_escape_gate])
+            if self.current_escape_gate is not None
+            else float("inf")
         )
+        need_ahead = gate_dist >= self.air_capture_radius
+        ahead = (not need_ahead) or any(
+            (p[0] - pE[0]) * ex + (p[1] - pE[1]) * ey > 0
+            for p in (self._position_xy(n) for n in UAVS)
+        )
+
+        satisfied = in_range and bilateral and ahead
+        now = time.monotonic()
         hold_elapsed = (
             0.0
             if self.capture_hold_started is None
-            else time.monotonic() - self.capture_hold_started
+            else now - self.capture_hold_started
         )
         pos = {n: self._position_xy(n) for n in ALL_AGENTS}
         rospy.loginfo_throttle(
             2.0,
-            "E uav_max=%.2f cars_max=%.2f hold=%.1f seal=%s | e(%.2f,%.2f) "
-            "i0(%.2f,%.2f) i1(%.2f,%.2f) c0(%.2f,%.2f) c1(%.2f,%.2f)",
+            "C uav_max=%.2f R_c=%.2f bi=%s ahead=%s hold=%.1f gate=%s gdist=%.2f "
+            "| ax(%.2f,%.2f) e(%.2f,%.2f) i0(%.2f,%.2f) i1(%.2f,%.2f) "
+            "c0(%.2f,%.2f) c1(%.2f,%.2f)",
             uav_max,
-            cars_max,
+            self.air_capture_radius,
+            bilateral,
+            ahead,
             hold_elapsed,
-            self.gate_seal_side or "-",
+            self.current_escape_gate,
+            gate_dist,
+            ex,
+            ey,
             pos[EVADER][0],
             pos[EVADER][1],
             pos["iris_0"][0],
@@ -1139,25 +987,22 @@ class AirIntruderPursuit:
             pos["car1"][0],
             pos["car1"][1],
         )
-        if enc and uav_max <= self.air_capture_radius and cars_max <= self.ground_projection_radius:
+        if satisfied:
             if self.capture_hold_started is None:
-                self.capture_hold_started = time.monotonic()
+                self.capture_hold_started = now
                 rospy.logwarn(
-                    "capture conditions met: uav_max=%.2f cars_max=%.2f (R_c=%.2f R_g=%.2f)",
+                    "capture conditions met: uav_max=%.2f (R_c=%.2f)",
                     uav_max,
-                    cars_max,
                     self.air_capture_radius,
-                    self.ground_projection_radius,
                 )
-            elif time.monotonic() - self.capture_hold_started >= self.hold_time:
+            elif hold_elapsed >= self.hold_time:
                 self._finish_captured()
         else:
             self.capture_hold_started = None
 
     def _freeze_uav(self, name):
         """围捕结束后冻结 UAV：HOVER_LOCK（桥忽略后续 pose/vel，防止 EGO
-        traj_server 残留逃逸轨迹经 cmd_pose_enu 覆盖）+ 以当前世界位姿（含当前
-        z）为原地目标，保证飞行器完全静止。"""
+        traj_server 残留逃逸轨迹覆盖）+ 以当前世界位姿（含当前 z）为原地目标。"""
         self.uav_cmd_publishers[name].publish(String(data="HOVER_LOCK"))
         p = self.model_poses[name].position
         self._publish_world_goal(name, (p.x, p.y), altitude=p.z)
@@ -1183,7 +1028,7 @@ class AirIntruderPursuit:
         uav_max = max(planar_distance(self._position_xy(name), pE) for name in UAVS)
         message = (
             "CAPTURED: iris_2 at (%.3f, %.3f), UAV max dist %.3f m, "
-            "pursuit %.1f s after intrusion" % (
+            "containment %.1f s after intrusion" % (
                 pE[0],
                 pE[1],
                 uav_max,
@@ -1197,13 +1042,25 @@ class AirIntruderPursuit:
         self._halt_all()
 
     def _finish_escaped(self):
+        """逃逸判定：按最靠近离开点的门分类。合法门 -> FAILED_ESCAPE；
+        原入侵门 -> INVALID_ESCAPE。"""
         pE = self._position_xy(EVADER)
-        message = "ESCAPED: iris_2 left protected region at (%.3f, %.3f) after %.1f s" % (
-            pE[0],
-            pE[1],
-            time.monotonic() - self.pursuit_started_at,
+        gate = min(ENTRY_GATES, key=lambda g: planar_distance(pE, ENTRY_GATES[g]))
+        if gate == self.entry_side:
+            state = self.INVALID_ESCAPE
+        else:
+            state = self.FAILED_ESCAPE
+        message = (
+            "%s: iris_2 left protected region via %s at (%.3f, %.3f) after %.1f s"
+            % (
+                state,
+                gate,
+                pE[0],
+                pE[1],
+                time.monotonic() - self.pursuit_started_at,
+            )
         )
-        self._set_state(self.ESCAPED)
+        self._set_state(state)
         self.last_hold_publish = 0.0
         self.result_publisher.publish(String(message))
         rospy.logwarn(message)
@@ -1251,9 +1108,7 @@ class AirIntruderPursuit:
             if name not in self.model_poses:
                 continue
             point = self._position_xy(name)
-            agent = self._marker(
-                10 + index, "agents", Marker.SPHERE, colors[name]
-            )
+            agent = self._marker(10 + index, "agents", Marker.SPHERE, colors[name])
             agent.pose.position.x = point[0]
             agent.pose.position.y = point[1]
             if name in UAVS + (EVADER,):
@@ -1263,7 +1118,7 @@ class AirIntruderPursuit:
             agent.scale.x = agent.scale.y = agent.scale.z = 0.3
             markers.markers.append(agent)
 
-        # iris_2 地面投影（第 21 节）
+        # iris_2 地面投影
         if EVADER in self.model_poses:
             point = self._position_xy(EVADER)
             proj = self._marker(20, "projection", Marker.CYLINDER, (1.0, 0.4, 0.1, 0.6))
@@ -1282,19 +1137,19 @@ class AirIntruderPursuit:
                 route.points.append(Point(x=x, y=y, z=0.1))
             markers.markers.append(route)
 
-        # 围捕阵型目标点（第 21 节）
-        if self.state in (self.PURSUIT, self.ENCIRCLED) and self.last_pursuit_targets:
-            for index, (name, target) in enumerate(self.last_pursuit_targets.items()):
+        # CONTAINMENT 阵型目标点 + 逃逸轴 + 当前逃逸门
+        if self.state == self.CONTAINMENT and self.last_containment_targets:
+            for index, (name, target) in enumerate(self.last_containment_targets.items()):
                 goal = self._marker(
-                    30 + index, "pursuit_goal", Marker.SPHERE, (1.0, 0.5, 1.0, 0.5)
+                    30 + index, "containment_goal", Marker.SPHERE, (1.0, 0.5, 1.0, 0.5)
                 )
                 goal.pose.position.x = target[0]
                 goal.pose.position.y = target[1]
                 goal.pose.position.z = 0.2 if name in CARS else 1.5
                 goal.scale.x = goal.scale.y = goal.scale.z = 0.25
                 markers.markers.append(goal)
-            e0 = self.last_pursuit_targets[EVADER]
-            line = self._marker(35, "evasion_vec", Marker.ARROW, (1.0, 0.3, 0.3, 0.7))
+            e0 = self.last_containment_targets[EVADER]
+            line = self._marker(35, "escape_axis", Marker.ARROW, (1.0, 0.3, 0.3, 0.7))
             line.scale.x = 0.03
             line.pose.position.x = e0[0]
             line.pose.position.y = e0[1]
@@ -1304,33 +1159,33 @@ class AirIntruderPursuit:
             line.points.append(Point(x=1.5 * ex, y=1.5 * ey, z=0))
             markers.markers.append(line)
 
-        # 四追捕者凸包（Encirclement 可视化）
-        if self.state == self.ENCIRCLED and self.encircle_hull:
-            hull = self._marker(40, "encircle_hull", Marker.LINE_STRIP, (1.0, 0.8, 0.1, 0.9))
-            hull.scale.x = 0.05
-            for px, py in self.encircle_hull:
-                hull.points.append(Point(x=px, y=py, z=0.12))
-            if len(self.encircle_hull) > 1:
-                first = self.encircle_hull[0]
-                hull.points.append(Point(x=first[0], y=first[1], z=0.12))
-            markers.markers.append(hull)
+            if self.current_escape_gate:
+                gx, gy = ENTRY_GATES[self.current_escape_gate]
+                gate = self._marker(36, "escape_gate", Marker.SPHERE, (0.0, 0.8, 1.0, 0.9))
+                gate.pose.position.x = gx
+                gate.pose.position.y = gy
+                gate.pose.position.z = 1.0
+                gate.scale.x = gate.scale.y = 0.3
+                gate.scale.z = 0.8
+                markers.markers.append(gate)
 
         text = self._marker(60, "state", Marker.TEXT_VIEW_FACING, (1.0, 1.0, 1.0, 1.0))
         text.pose.position.x = self.inner_region[1] + 0.2
         text.pose.position.y = self.inner_region[3] + 0.2
         text.pose.position.z = 0.8
         text.scale.z = 0.3
-        if self.state == self.ENCIRCLED and self.capture_hold_started is not None:
+        if self.state == self.CONTAINMENT and self.capture_hold_started is not None:
             remain = self.hold_time - (time.monotonic() - self.capture_hold_started)
             detail = " | capture hold %.1fs" % max(0.0, remain)
-        elif self.state in (self.PURSUIT, self.ENCIRCLED):
+        elif self.state == self.CONTAINMENT:
             pE = self._position_xy(EVADER)
-            uav_min = min(planar_distance(self._position_xy(n), pE) for n in UAVS)
-            cars_max = max(planar_distance(self._position_xy(n), pE) for n in CARS)
-            detail = " | UAVmin=%.2f CARSmax=%.2f" % (uav_min, cars_max)
+            uav_max = max(planar_distance(self._position_xy(n), pE) for n in UAVS)
+            detail = " | gate=%s UAVmax=%.2f" % (
+                self.current_escape_gate, uav_max
+            )
         else:
             detail = ""
-        text.text = "Air intruder: %s | entry %s%s" % (
+        text.text = "Vblock capture: %s | entry %s%s" % (
             self.state, self.entry_side, detail
         )
         markers.markers.append(text)
@@ -1339,8 +1194,8 @@ class AirIntruderPursuit:
 
 if __name__ == "__main__":
     try:
-        AirIntruderPursuit()
+        VblockCapture()
         rospy.spin()
     except (rospy.ROSInterruptException, RuntimeError) as exc:
-        rospy.logerr("air_intruder_pursuit stopped: %s", exc)
+        rospy.logerr("vblock_capture stopped: %s", exc)
         sys.exit(1)

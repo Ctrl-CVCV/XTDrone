@@ -1,0 +1,90 @@
+# 两机两车围捕一机 —— V 型封控任务参数（独立方案，不影响 car3_swarm Voronoi）
+# FSM: WAITING -> TAKEOFF -> STAGING -> INTRUDER_APPROACH -> AIR_INTRUSION_DETECTED
+#      -> CONTAINMENT -> CAPTURED / FAILED_ESCAPE / INVALID_ESCAPE
+# 坐标均为世界系；内墙/门数值取自 basic_room_sim/models/nesting_room/model.sdf 实测。
+# 生效方式：vblock_capture 节点启动时读取一次，改完必须重启节点。
+
+# ---- UAV 统一恒高 ----
+uav:
+  fixed_altitude: 1.33    # H_f：恒高（< 内墙高 3.0）。围捕在恒高平面进行，捕获判定不含高度
+  wall_height: 3.0        # 真实内墙高度 H_wall
+
+# ---- iris_2 出生与入侵 ----
+# 默认工况 = CORNER_2 出生（右下角东南角停机坪）+ DOWN 入侵（与 launch 链路一致）。
+# 门方向由 vblock_capture.launch 的 entry_side 参数覆盖（--entry DOWN|LEFT|UP|RIGHT），
+# 本 YAML 仅在节点未收到 launch 参数时作兜底。
+intruder:
+  spawn_mode: fixed
+  fixed_corner: CORNER_2  # 固定右下角（东南角）外墙停机坪 (5.2, -4.9)；CORNER_2 相邻入侵方向 DOWN/RIGHT
+  spawn_corner_0: [5.0, 5.0, -1.5708]
+  spawn_corner_1: [-5.0, -5.0, -1.5708]
+  spawn_corner_2: [5.2, -4.9, 3.1416]
+  entry_mode: fixed
+  entry_side: DOWN        # 入侵门；合法逃逸门自动 = 其余三门
+  approach_offset: 1.2    # 内墙外侧待机点距墙段中心线的距离 (m)
+  inside_offset: 1.2      # 穿墙后内点距墙段中心线的距离 (m)
+  entry_arrive: 0.4       # 阶段到位判定半径 (m)
+  # 到达外墙待机点后的"真正停稳"判定：水平速度持续低于 entry_speed_eps 达 entry_speed_hold 秒
+  # 且至少停留 approach_settle 秒才发进内部目标（防止 EGO 带横移动量偏出门洞撞门框）
+  approach_settle: 1.2
+  entry_speed_eps: 0.1
+  entry_speed_hold: 0.4
+  entry_speed_cap: 6.0
+  approach_pre_extra: 2.0  # 门洞中心线预对齐点额外外推距离 (m)
+
+  # ---- 逃逸出口评分与滞回（§4.2）----
+  exit_switch_margin: 0.5     # ΔJ：换门所需代价优势
+  exit_switch_hold_time: 0.8  # T_switch：代价优势需持续的时长 (s)
+  escape_weight_dist: 1.0     # w_d：距离代价权重
+  escape_weight_pursuer: 1.2  # w_p：封堵风险权重（追捕者越靠近门/路径代价越大）
+  escape_weight_obstacle: 0.8 # w_o：障碍代价权重（v1 预留，当前恒为 0）
+  v_eps: 0.3                  # 逃逸轴速度阈值：iris_2 速度低于该值则回退到目标门方向 (m/s)
+
+# ---- V 型封控阵型（§4.3 / §4.4）----
+containment:
+  uav_forward_offset: 1.0     # df_uav：UAV 在逃逸轴前方的距离（纯静态 V 点，不做两档收缩）
+  uav_lateral_offset: 1.0     # ds_uav：UAV 横向展开距离
+  ugv_lateral_offset: 1.0     # ds_car：小车夹击入侵机地面投影的横向展开距离（左右各 1.0m，
+                              #         不再参与逃逸轴后方封堵，与空中逃逸门/UAV 捕获解耦）
+  uav_margin: 0.9             # UAV 封堵点贴墙收缩余量（防 EGO 撞墙；H_f<3m 墙不可越墙）
+  ugv_margin: 0.6             # 小车封堵点贴墙收缩余量
+  role_lock: true             # 角色锁定：进入 CONTAINMENT 分配一次，左追左点/右追右点
+  e_smooth: 0.8               # 逃逸轴指数平滑增益（0~1，越大跟随实际速度方向越快；越小越平滑）
+
+# ---- 捕获判定（§5，纯 2D，仅两架 UAV 为依据）----
+capture:
+  air_capture_radius: 1.5     # R_c：两架 UAV 距 iris_2 的 XY 距离均 <= 该值
+  hold_time: 2.0              # T_hold：捕获条件需持续保持的时长 (s)
+  bilateral_blocking: true    # 双侧封堵 z_A*z_B<0 开关（两 UAV 分居逃逸轴两侧）
+
+# ---- 规划发布（节流，防 EGO 抖动）----
+planning:
+  tactical_rate: 15.0
+  goal_publish_rate: 3.0
+  goal_change_threshold: 0.3
+  re_goal_interval: 5.0
+
+fsm:
+  intrusion_debounce: 0.3
+  auto_start: true
+  start_delay: 1.0
+
+# ---- 内墙内边包围盒（墙厚 0.15 的净内表面），入侵/逃逸判定用，只读 ----
+inner_region:
+  x_min: -3.091
+  x_max: 2.859
+  y_min: -2.984
+  y_max: 2.966
+
+# ---- 内墙墙段中心线（世界系，墙厚 0.15），只读 ----
+gate_positions:
+  UP:    [-0.116, 3.041]
+  DOWN:  [-0.116, -3.059]
+  LEFT:  [-3.166, -0.009]
+  RIGHT: [2.934, -0.009]
+
+gate_normals:
+  UP:    [0.0, -1.0]
+  DOWN:  [0.0, 1.0]
+  LEFT:  [1.0, 0.0]
+  RIGHT: [-1.0, 0.0]

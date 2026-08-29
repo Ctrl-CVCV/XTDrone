@@ -5,6 +5,7 @@
 <robot name="car3" xmlns:xacro="http://www.ros.org/wiki/xacro">
   <xacro:arg name="prefix" default=""/>
   <xacro:arg name="ns" default="/"/>
+  <xacro:arg name="red_marker" default="false"/>
   <xacro:property name="pfx" value="$(arg prefix)"/>
   <xacro:property name="robot_ns" value="$(arg ns)"/>
 
@@ -400,4 +401,41 @@
     </sensor>
   </gazebo>
 
+  <!-- 入侵标识：红色物块（仅视觉，无碰撞）。尺寸/位置与 intruder_car_capture
+       的 car3_red 一致：0.08 立方体，base_link z 0.13（贯穿雷达-车身柱、贴合车身、
+       不挡雷达，顶 0.17 < 雷达底 0.2356）。默认关闭，开启后不参与任何物理/导航。 -->
+  <xacro:if value="$(arg red_marker)">
+    <link name="${pfx}intruder_marker">
+      <inertial>
+        <mass value="0.0001" />
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <inertia ixx="1e-8" ixy="0" ixz="0" iyy="1e-8" iyz="0" izz="1e-8" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <box size="0.08 0.08 0.08" />
+        </geometry>
+        <material name="intruder_red">
+          <color rgba="1 0 0 1" />
+        </material>
+      </visual>
+    </link>
+    <joint name="${pfx}intruder_marker_joint" type="fixed">
+      <origin xyz="0 0 0.13" rpy="0 0 0" />
+      <parent link="${pfx}base_link" />
+      <child link="${pfx}intruder_marker" />
+    </joint>
+    <gazebo reference="${pfx}intruder_marker">
+      <material>Gazebo/Red</material>
+      <visual>
+        <material>
+          <ambient>1 0 0 1</ambient>
+          <diffuse>1 0 0 1</diffuse>
+          <specular>0.5 0 0 1</specular>
+          <emissive>0.4 0 0 1</emissive>
+        </material>
+      </visual>
+    </gazebo>
+  </xacro:if>
 </robot>

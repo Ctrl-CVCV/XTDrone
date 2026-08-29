@@ -1,0 +1,46 @@
+<?xml version='1.0'?>
+<sdf version='1.7'>
+  <model name='nesting_room_mesh'>
+    <!-- 由桌面 map.obj 复刻当前 nesting_room 墙体几何（网格形式）：
+         4 外墙 + 4 内墙(各 2 侧段) + 4 门楣 + 4 角柱，
+         门洞 1.2x2.25m、墙厚 0.15m、墙高 3.0m，与世界原点对齐。 -->
+    <static>1</static>
+    <link name='link'>
+      <pose>0 0 0 0 0 0</pose>
+      <collision name='mesh_collision'>
+        <geometry>
+          <mesh>
+            <uri>model://nesting_room_mesh/meshes/map.stl</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='mesh_visual'>
+        <geometry>
+          <mesh>
+            <uri>model://nesting_room_mesh/meshes/map.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <!-- 地面贴纸（地皮）：map_ground.png 贴图四边面，视觉 only，无碰撞 -->
+      <visual name='floor_visual'>
+        <pose>0 0 0 0 0 0</pose>
+        <cast_shadows>0</cast_shadows>
+        <geometry>
+          <mesh>
+            <uri>model://nesting_room_mesh/meshes/floor_ground.obj</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://nesting_room_mesh/materials/scripts</uri>
+            <uri>model://nesting_room_mesh/materials/textures</uri>
+            <name>room_floor</name>
+          </script>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

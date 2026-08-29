@@ -1,0 +1,25 @@
+<launch>
+  <!-- 云台相机 ros_control 控制器启动（不依赖 catkin 包，全部绝对路径）
+       前提：gazebo 已运行且云台模型已 spawn
+       话题：
+         /gimbal/joint_states                            关节状态（50Hz）
+         /gimbal/gimbal_yaw_controller/command           yaw 目标角 (rad, Float64)
+         /gimbal/gimbal_roll_controller/command          roll 目标角 (rad, Float64) -->
+
+  <!-- 全局 robot_description 供 robot_state_publisher / rviz RobotModel 使用 -->
+  <param name="robot_description" textfile="/workspace/gimbal_camera/robot.urdf" />
+
+  <!-- /gimbal 命名空间下的 robot_description 供 gazebo_ros_control 的 DefaultRobotHWSim 使用 -->
+  <group ns="gimbal">
+    <param name="robot_description" textfile="/workspace/gimbal_camera/robot.urdf" />
+  </group>
+
+  <rosparam file="/workspace/gimbal_camera/config/gimbal_control.yaml" command="load" />
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" output="screen">
+    <remap from="/joint_states" to="/gimbal/joint_states" />
+  </node>
+
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" ns="gimbal" output="screen"
+        args="joint_state_controller gimbal_yaw_controller gimbal_roll_controller" />
+</launch>

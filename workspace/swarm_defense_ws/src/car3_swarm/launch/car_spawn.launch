@@ -8,11 +8,13 @@
     <arg name="y"/>
     <arg name="yaw"/>
     <arg name="spawn_delay" default="0"/>
+    <arg name="red_marker" default="false"/>  <!-- 仅视觉红色入侵物块（car2 用） -->
 
     <group ns="$(arg car)">
         <param name="robot_description"
                command="$(find xacro)/xacro '$(find car3_control)/urdf/car3.xacro'
-                        prefix:=$(arg car)/ ns:=/$(arg car)"/>
+                        prefix:=$(arg car)/ ns:=/$(arg car)
+                        red_marker:=$(arg red_marker)"/>
 
         <!-- must be on the param server before spawn (gazebo_ros_control
              reads pid_gains during robot hw interface init) -->

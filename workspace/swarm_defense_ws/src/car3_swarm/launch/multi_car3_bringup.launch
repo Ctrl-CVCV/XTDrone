@@ -4,8 +4,8 @@
          Fixed spawn poses (requirement 1.3, defaults stay consistent across runs):
            car0 defender  (2.3, 2.4)   yaw -2.334  NE inner corner, facing center
            car1 defender  (-2.3, -2.4) yaw 0.808   SW inner corner, facing center
-           car2 intruder  (-6.5, 6.6)  yaw 0.0     NW outer corner, parallel to north wall
-           car3 intruder  (6.5, -6.5)  yaw 3.14159 SE outer corner
+           car2 intruder  (-4.92, 4.52) yaw 0.0    NW floor parking spot (top-left 停车位)
+           car3 intruder  (6.5, -6.5)   yaw 3.14159 SE outer corner
          Per-car topics/services under /carN, TF frames carN/* (requirement 1.4). -->
     <arg name="gui" default="false"/>
     <arg name="start_gazebo" default="true"/>
@@ -15,12 +15,49 @@
     <arg name="car1_x" default="-2.3"/>
     <arg name="car1_y" default="-2.4"/>
     <arg name="car1_yaw" default="0.808"/>
-    <arg name="car2_x" default="-6.5"/>
-    <arg name="car2_y" default="6.6"/>
+    <arg name="car2_x" default="-4.92"/>
+    <arg name="car2_y" default="4.52"/>
     <arg name="car2_yaw" default="0.0"/>
     <arg name="car3_x" default="6.5"/>
     <arg name="car3_y" default="-6.5"/>
     <arg name="car3_yaw" default="3.14159"/>
+    <arg name="car2_red" default="true"/>  <!-- car2=外墙左上角入侵小车，默认带红色物块 -->
+
+    <!-- one gazebo instance with nesting_room world -->
+    <include file="$(find basic_room_sim)/launch/nesting_room.launch">
+        <arg name="gui" value="$(arg gui)"/>
+        <arg name="start_gazebo" value="$(arg start_gazebo)"/>
+    </include>
+
+    <include file="$(find car3_swarm)/launch/car_spawn.launch">
+        <arg name="car" value="car0"/>
+        <arg name="x" value="$(arg car0_x)"/>
+        <arg name="y" value="$(arg car0_y)"/>
+        <arg name="yaw" value="$(arg car0_yaw)"/>
+    </include>
+
+    <include file="$(find car3_swarm)/launch/car_spawn.launch">
+        <arg name="car" value="car1"/>
+        <arg name="x" value="$(arg car1_x)"/>
+        <arg name="y" value="$(arg car1_y)"/>
+        <arg name="yaw" value="$(arg car1_yaw)"/>
+    </include>
+
+    <include file="$(find car3_swarm)/launch/car_spawn.launch">
+        <arg name="car" value="car2"/>
+        <arg name="x" value="$(arg car2_x)"/>
+        <arg name="y" value="$(arg car2_y)"/>
+        <arg name="yaw" value="$(arg car2_yaw)"/>
+        <arg name="red_marker" value="$(arg car2_red)"/>
+    </include>
+
+    <include file="$(find car3_swarm)/launch/car_spawn.launch">
+        <arg name="car" value="car3"/>
+        <arg name="x" value="$(arg car3_x)"/>
+        <arg name="y" value="$(arg car3_y)"/>
+        <arg name="yaw" value="$(arg car3_yaw)"/>
+    </include>
+</launch>
 
     <!-- one gazebo instance with nesting_room world -->
     <include file="$(find basic_room_sim)/launch/nesting_room.launch">
