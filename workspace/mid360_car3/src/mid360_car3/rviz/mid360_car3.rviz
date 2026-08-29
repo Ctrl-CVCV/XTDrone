@@ -1,0 +1,86 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 78
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /Mid360 Scan1
+      Splitter Ratio: 0.5
+    Tree Height: 700
+  - Class: rviz/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz/Grid
+      Enabled: true
+      Name: Grid
+      Plane Cell Count: 30
+      Plane Cell Size: 1
+      Plane Color: 160; 160; 164
+      Reference Frame: <Fixed Frame>
+    - Class: rviz/PointCloud2
+      Enabled: true
+      Name: Mid360 Scan
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /scan
+      Use Fixed Frame: true
+      Use rainbow: true
+      Color Transformer: AxisColor
+      Axis Color:
+        RGB8: 255; 0; 0
+      Size (Pixels): 3
+      Size (m): 0.03
+      Style: Points
+    - Class: rviz/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Robot Description: robot_description
+      Visual Enabled: true
+      Collision Enabled: false
+      Alpha: 1
+    - Class: rviz/TF
+      Enabled: false
+      Name: TF
+      Frame Timeout: 15
+      Marker Scale: 1
+      Show Axes: true
+      Show Names: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: odom
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 5
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0.3
+      Name: Current View
+      Pitch: 0.6
+      Yaw: 0.8
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 900
+  Width: 1400
+  X: 100
+  Y: 100

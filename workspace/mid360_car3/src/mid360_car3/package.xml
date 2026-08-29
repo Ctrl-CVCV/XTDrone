@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>mid360_car3</name>
+  <version>0.0.0</version>
+  <description>
+    Standalone car3 mecanum wheel car with a Livox MID-360 3D LiDAR replacing the 2D hokuyo.
+    Reuses the car3_control chassis (mecanum / ros_control / ground-truth odom) and the
+    livox_laser_simulation gazebo plugin (sensor_msgs/PointCloud2 on /scan).
+    lidar:=mid360 switches car3.xacro to the MID-360 sensor; red_marker keeps the
+    intruder variant (red cube) / pursuit-car variant (no cube) split.
+  </description>
+  <maintainer email="dev@xtdrone.local">dev</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>car3_control</exec_depend>
+  <exec_depend>livox_laser_simulation</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>rviz</exec_depend>
+</package>

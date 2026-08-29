@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <!-- 独立 mid-360 小车（不跑整个围捕仿真）：
+         car3 麦轮底盘 + MID-360 3D 雷达（外观 mesh + livox 点云, /scan 为 PointCloud2）。
+         围捕小车变体默认 red_marker:=false；入侵机变体 red_marker:=true 带红色物块。
+         lidar:=mid360 复用 car3.xacro 的切换逻辑，默认 hokuyo 不受影响。 -->
+    <arg name="gui" default="true"/>
+    <arg name="x" default="0.0"/>
+    <arg name="y" default="0.0"/>
+    <arg name="yaw" default="0.0"/>
+    <arg name="model" default="mid360_car3"/>
+    <arg name="red_marker" default="false"/>
+    <arg name="livox_samples" default="24000"/>
+    <arg name="open_rviz" default="true"/>
+
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name" value="$(find mid360_car3)/worlds/mid360_demo.world"/>
+        <arg name="gui" value="$(arg gui)"/>
+        <arg name="paused" value="false"/>
+        <arg name="use_sim_time" value="true"/>
+    </include>
+
+    <param name="robot_description"
+           command="$(find xacro)/xacro '$(find car3_control)/urdf/car3.xacro'
+                    lidar:=mid360 red_marker:=$(arg red_marker)
+                    livox_samples:=$(arg livox_samples)"/>
+
+    <!-- must be on the param server before spawn: gazebo_ros_control reads pid_gains
+         during robot hw interface init -->
+    <rosparam file="$(find car3_control)/config/gazebo_pid.yaml" command="load"/>
+
+    <node name="spawn_car3" pkg="gazebo_ros" type="spawn_model"
+          args="-x $(arg x) -y $(arg y) -z 0.01 -Y $(arg yaw)
+                -param robot_description -urdf -model $(arg model)"
+          output="screen"/>
+
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+        <param name="publish_frequency" value="50.0"/>
+    </node>
+
+    <rosparam file="$(find car3_control)/config/car3_controllers.yaml" command="load"/>
+
+    <node name="controller_spawner" pkg="controller_manager" type="spawner"
+          args="joint_state_controller
+                wheel_lf_velocity_controller
+                wheel_rf_velocity_controller
+                wheel_lb_velocity_controller
+                wheel_rb_velocity_controller"
+          output="screen"/>
+
+    <node name="mecanum_controller_node" pkg="car3_control" type="mecanum_controller_node"
+          output="screen">
+        <param name="wheel_radius" value="0.0489"/>
+        <param name="wheel_base_x_half" value="0.0973"/>
+        <param name="wheel_base_y_half" value="0.1058"/>
+        <param name="sign_fl" value="1.0"/>
+        <param name="sign_fr" value="1.0"/>
+        <param name="sign_rl" value="1.0"/>
+        <param name="sign_rr" value="1.0"/>
+    </node>
+
+    <!-- ground truth odom -> /odom + odom->base_footprint TF (frame==world origin) -->
+    <node name="ground_truth_odom" pkg="car3_control" type="ground_truth_odom_node"
+          output="screen">
+        <param name="model_name" value="$(arg model)"/>
+        <param name="odom_frame" value="odom"/>
+        <param name="base_frame" value="base_footprint"/>
+    </node>
+
+    <!-- rviz: 固定坐标系 odom，显示 RobotModel + /scan PointCloud2 -->
+    <node if="$(arg open_rviz)" name="rviz" pkg="rviz" type="rviz"
+          args="-d $(find mid360_car3)/rviz/mid360_car3.rviz"/>
+</launch>

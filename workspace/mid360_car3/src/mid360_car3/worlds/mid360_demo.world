@@ -1,0 +1,168 @@
+<?xml version="1.0" ?>
+<!-- 独立 mid-360 演示场景：地面 + 四面墙 + 几个障碍物，让 3D 点云有实际内容。
+     无 gazebo_ros 插件（由 gazebo_ros empty_world.launch 注入）。 -->
+<sdf version="1.7">
+  <world name="mid360_demo_world">
+    <light name='sun' type='directional'>
+      <cast_shadows>1</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name='ground_plane'>
+      <static>1</static>
+      <link name='link'>
+        <collision name='collision'>
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>30 30</size>
+            </plane>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>1</mu>
+                <mu2>1</mu2>
+              </ode>
+            </friction>
+            <bounce>
+              <restitution_coefficient>0</restitution_coefficient>
+            </bounce>
+          </surface>
+        </collision>
+        <visual name='visual'>
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>30 30</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+            <specular>0.01 0.01 0.01 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 四面墙（静态）围成一个 8x8 房间，墙高 2m -->
+    <model name='wall_n'>
+      <static>1</static>
+      <pose>0 4.0 1.0 0 0 0</pose>
+      <link name='link'>
+        <collision name='c'>
+          <geometry><box><size>8 0.3 2.4</size></box></geometry>
+        </collision>
+        <visual name='v'>
+          <geometry><box><size>8 0.3 2.4</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient><diffuse>0.6 0.6 0.6 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name='wall_s'>
+      <static>1</static>
+      <pose>0 -4.0 1.0 0 0 0</pose>
+      <link name='link'>
+        <collision name='c'>
+          <geometry><box><size>8 0.3 2.4</size></box></geometry>
+        </collision>
+        <visual name='v'>
+          <geometry><box><size>8 0.3 2.4</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient><diffuse>0.6 0.6 0.6 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name='wall_e'>
+      <static>1</static>
+      <pose>4.0 0 1.0 0 0 0</pose>
+      <link name='link'>
+        <collision name='c'>
+          <geometry><box><size>0.3 8 2.4</size></box></geometry>
+        </collision>
+        <visual name='v'>
+          <geometry><box><size>0.3 8 2.4</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient><diffuse>0.6 0.6 0.6 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name='wall_w'>
+      <static>1</static>
+      <pose>-4.0 0 1.0 0 0 0</pose>
+      <link name='link'>
+        <collision name='c'>
+          <geometry><box><size>0.3 8 2.4</size></box></geometry>
+        </collision>
+        <visual name='v'>
+          <geometry><box><size>0.3 8 2.4</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient><diffuse>0.6 0.6 0.6 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 房间内障碍物 -->
+    <model name='obs_a'>
+      <static>1</static>
+      <pose>1.5 1.2 0.5 0 0 0.3</pose>
+      <link name='link'>
+        <collision name='c'>
+          <geometry><box><size>1.2 0.8 1.0</size></box></geometry>
+        </collision>
+        <visual name='v'>
+          <geometry><box><size>1.2 0.8 1.0</size></box></geometry>
+          <material><ambient>0.3 0.6 0.8 1</ambient><diffuse>0.3 0.6 0.8 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name='obs_b'>
+      <static>1</static>
+      <pose>-1.8 -0.8 0.4 0 0 -0.4</pose>
+      <link name='link'>
+        <collision name='c'>
+          <geometry><box><size>1.5 0.6 0.8</size></box></geometry>
+        </collision>
+        <visual name='v'>
+          <geometry><box><size>1.5 0.6 0.8</size></box></geometry>
+          <material><ambient>0.8 0.5 0.2 1</ambient><diffuse>0.8 0.5 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name='obs_c'>
+      <static>1</static>
+      <pose>0.2 -1.8 0.3 0 0 0</pose>
+      <link name='link'>
+        <collision name='c'>
+          <geometry><box><size>0.6 0.6 0.6</size></box></geometry>
+        </collision>
+        <visual name='v'>
+          <geometry><box><size>0.6 0.6 0.6</size></box></geometry>
+          <material><ambient>0.2 0.8 0.3 1</ambient><diffuse>0.2 0.8 0.3 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 天花板：让向上射线命中，形成完整室内点云 -->
+    <model name='ceiling'>
+      <static>1</static>
+      <pose>0 0 2.5 0 0 0</pose>
+      <link name='link'>
+        <collision name='c'>
+          <geometry><box><size>8.4 8.4 0.1</size></box></geometry>
+        </collision>
+        <visual name='v'>
+          <geometry><box><size>8.4 8.4 0.1</size></box></geometry>
+          <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>
