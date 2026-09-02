@@ -62,14 +62,19 @@ namespace ego_planner
     double emergency_time_;
     bool flag_realworld_experiment_;
     bool enable_fail_safe_;
+    // When true, odom_world is the PX4/MAVROS local ENU frame.  In this
+    // mode goals published in map/px4_local are already in the planner
+    // frame and must not pass through the legacy LIO-frame conversion.
+    bool odom_is_px4_local_;
 
     /* planning data */
-    bool have_trigger_, have_target_, have_odom_, have_new_target_, have_recv_pre_agent_;
+    bool have_trigger_, have_target_, have_odom_, have_px4_pose_, have_new_target_, have_recv_pre_agent_;
     FSM_EXEC_STATE exec_state_;
     int continously_called_times_{0};
 
     Eigen::Vector3d odom_pos_, odom_vel_, odom_acc_; // odometry state
     Eigen::Quaterniond odom_orient_;
+    geometry_msgs::PoseStamped px4_pose_;
 
     Eigen::Vector3d init_pt_, start_pt_, start_vel_, start_acc_, start_yaw_; // start state
     Eigen::Vector3d end_pt_, end_vel_;                                       // goal state
@@ -84,7 +89,7 @@ namespace ego_planner
     /* ROS utils */
     ros::NodeHandle node_;
     ros::Timer exec_timer_, safety_timer_;
-    ros::Subscriber waypoint_sub_, odom_sub_, swarm_trajs_sub_, broadcast_bspline_sub_, trigger_sub_;
+    ros::Subscriber waypoint_sub_, odom_sub_, px4_pose_sub_, swarm_trajs_sub_, broadcast_bspline_sub_, trigger_sub_;
     ros::Publisher replan_pub_, new_pub_, bspline_pub_, data_disp_pub_, swarm_trajs_pub_, broadcast_bspline_pub_;
 
     /* helper functions */
@@ -108,6 +113,7 @@ namespace ego_planner
     void waypointCallback(const geometry_msgs::PoseStampedPtr &msg);
     void triggerCallback(const geometry_msgs::PoseStampedPtr &msg);
     void odometryCallback(const nav_msgs::OdometryConstPtr &msg);
+    void px4PoseCallback(const geometry_msgs::PoseStampedConstPtr &msg);
     void swarmTrajsCallback(const traj_utils::MultiBsplinesPtr &msg);
     void BroadcastBsplineCallback(const traj_utils::BsplinePtr &msg);
 

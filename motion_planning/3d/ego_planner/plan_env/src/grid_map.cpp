@@ -43,6 +43,8 @@ void GridMap::initMap(ros::NodeHandle &nh)
   node_.param("grid_map/virtual_ceil_height", mp_.virtual_ceil_height_, -0.1);
   node_.param("grid_map/virtual_ceil_yp", mp_.virtual_ceil_yp_, -0.1);
   node_.param("grid_map/virtual_ceil_yn", mp_.virtual_ceil_yn_, -0.1);
+  node_.param("grid_map/filter_ground_points", mp_.filter_ground_points_, false);
+  node_.param("grid_map/ground_filter_max_z", mp_.ground_filter_max_z_, -0.1);
 
   node_.param("grid_map/show_occ_time", mp_.show_occ_time_, false);
   node_.param("grid_map/pose_type", mp_.pose_type_, 1);
@@ -790,6 +792,15 @@ void GridMap::cloudCallback(const sensor_msgs::PointCloud2ConstPtr &img)
   {
     pt = latest_cloud.points[i];
     p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z;
+
+    // cloud_registered is already expressed in the planner's local LIO
+    // world frame.  In the Mid360 simulation the floor is not a perfectly
+    // horizontal single z layer because of the sensor mounting/registration
+    // chain.  Keeping it as an obstacle creates a solid occupied slab that
+    // intersects EGO's initial control points.  Filter only the configured
+    // low layer; walls and aerial obstacles above it remain unchanged.
+    if (mp_.filter_ground_points_ && p3d(2) <= mp_.ground_filter_max_z_)
+      continue;
 
     /* point inside update range */
     Eigen::Vector3d devi = p3d - md_.camera_pos_;

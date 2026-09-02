@@ -99,20 +99,36 @@ class Communication:
         return target_raw_pose
 
     def cmd_pose_flu_callback(self, msg):
-        if self.hover_flag == 1:
-            return
+        # A valid pose command is an explicit controller handover.  Clear a
+        # previous HOVER latch here; otherwise a vehicle kept on the ground
+        # during staggered multi-UAV takeoff silently ignores its first pose
+        # setpoints even though /cmd_pose_flu is receiving them.
+        self.hover_flag = 0
+        self.flight_mode = 'OFFBOARD'
         self.coordinate_frame = 9
         self.motion_type = 0
         yaw = self.q2yaw(msg.orientation)
         self.target_motion = self.construct_target(x=msg.position.x,y=msg.position.y,z=msg.position.z,yaw=yaw)
  
     def cmd_pose_enu_callback(self, msg):
-        if self.hover_flag == 1:
-            return
+        # Position setpoints are authoritative.  In particular, this must
+        # release the HOVER latch used for a not-yet-airborne vehicle in a
+        # staggered takeoff; relying on a separate OFFBOARD string command
+        # makes the result depend on callback ordering.
+        self.hover_flag = 0
+        self.flight_mode = 'OFFBOARD'
+        # mavros/setpoint_raw/local is a ROS-facing ENU API. MAVROS converts
+        # these fields to MAVLink LOCAL_NED internally. Converting here as
+        # well flips z twice and turns a takeoff target into a downward one.
         self.coordinate_frame = 1
         self.motion_type = 0
-        yaw = self.q2yaw(msg.orientation)
-        self.target_motion = self.construct_target(x=msg.position.x,y=msg.position.y,z=msg.position.z,yaw=yaw)
+        yaw_enu = self.q2yaw(msg.orientation)
+        self.target_motion = self.construct_target(
+            x=msg.position.x,
+            y=msg.position.y,
+            z=msg.position.z,
+            yaw=yaw_enu,
+        )
         
     def cmd_vel_flu_callback(self, msg):
         self.hover_state_transition(msg.linear.x, msg.linear.y, msg.linear.z, msg.angular.z)
@@ -126,7 +142,9 @@ class Communication:
         if self.hover_flag == 0:
             self.coordinate_frame = 1
             self.motion_type = 1
-            self.target_motion = self.construct_target(vx=msg.linear.x,vy=msg.linear.y,vz=msg.linear.z,yaw_rate=msg.angular.z)    
+            self.target_motion = self.construct_target(
+                vx=msg.linear.x, vy=msg.linear.y, vz=msg.linear.z,
+                yaw_rate=msg.angular.z)
 
     def cmd_accel_flu_callback(self, msg):
         self.hover_state_transition(msg.linear.x, msg.linear.y, msg.linear.z, msg.angular.z)
@@ -140,7 +158,9 @@ class Communication:
         if self.hover_flag == 0:
             self.coordinate_frame = 1 
             self.motion_type = 2
-            self.target_motion = self.construct_target(ax=msg.linear.x,ay=msg.linear.y,az=msg.linear.z,yaw_rate=msg.angular.z)    
+            self.target_motion = self.construct_target(
+                afx=msg.linear.x, afy=msg.linear.y, afz=msg.linear.z,
+                yaw_rate=msg.angular.z)
             
     def hover_state_transition(self,x,y,z,w):
         if abs(x) > 0.02 or abs(y)  > 0.02 or abs(z)  > 0.02 or abs(w)  > 0.005:
@@ -218,4 +238,9 @@ class Communication:
 
 if __name__ == '__main__':
     communication = Communication(sys.argv[1],sys.argv[2])
-    communication.start()
+    try:
+        communication.start()
+    except rospy.ROSInterruptException:
+        # Normal when the supervising takeoff/mission process shuts down the
+        # bridge after landing. Do not print a misleading traceback.
+        pass

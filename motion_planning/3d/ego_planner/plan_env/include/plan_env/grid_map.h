@@ -79,6 +79,11 @@ struct MappingParameters {
 
   /* visualization and computation time display */
   double visualization_truncate_height_, virtual_ceil_height_, ground_height_, virtual_ceil_yp_, virtual_ceil_yn_;
+  // The simulated Mid360 cloud contains a tilted/duplicated low layer from
+  // the floor.  It is useful for visualization but must not be treated as a
+  // 3-D obstacle around an airborne vehicle.
+  bool filter_ground_points_;
+  double ground_filter_max_z_;
   bool show_occ_time_;
 
   /* active mapping */

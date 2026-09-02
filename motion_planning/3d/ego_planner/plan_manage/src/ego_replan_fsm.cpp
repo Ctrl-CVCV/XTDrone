@@ -10,6 +10,7 @@ namespace ego_planner
     exec_state_ = FSM_EXEC_STATE::INIT;
     have_target_ = false;
     have_odom_ = false;
+    have_px4_pose_ = false;
     have_recv_pre_agent_ = false;
     pending_waypoint_valid_ = false;
 
@@ -22,6 +23,7 @@ namespace ego_planner
     nh.param("fsm/emergency_time", emergency_time_, 1.0);
     nh.param("fsm/realworld_experiment", flag_realworld_experiment_, false);
     nh.param("fsm/fail_safe", enable_fail_safe_, true);
+    nh.param("fsm/odom_is_px4_local", odom_is_px4_local_, false);
 
     have_trigger_ = !flag_realworld_experiment_;
 
@@ -39,6 +41,17 @@ namespace ego_planner
     planner_manager_->initPlanModules(nh, visualization_);
     planner_manager_->deliverTrajToOptimizer(); // store trajectories
     planner_manager_->setDroneIdtoOpt();
+
+    // RViz and the XTDrone mission scripts historically publish UAV goals in
+    // the PX4 local frame (usually with frame_id=map), while EGO's map and
+    // odometry are in quadN/world.  Subscribe to the PX4 pose so waypoint
+    // callbacks can convert such goals into the actual LIO frame.  Goals
+    // explicitly tagged quadN/world are already in EGO's frame and bypass
+    // this conversion.
+    const int uav_id = planner_manager_->pp_.drone_id;
+    px4_pose_sub_ = nh.subscribe<geometry_msgs::PoseStamped>(
+        "/iris_" + std::to_string(uav_id) + "/mavros/local_position/pose",
+        10, &EGOReplanFSM::px4PoseCallback, this);
 
     /* callback */
     exec_timer_ = nh.createTimer(ros::Duration(0.01), &EGOReplanFSM::execFSMCallback, this);
@@ -219,7 +232,53 @@ namespace ego_planner
     if (msg->pose.position.z < -0.1)
       return;
 
-    Eigen::Vector3d end_wp(msg->pose.position.x, msg->pose.position.y, 1.0);
+    // Keep the goal height supplied by RViz/the caller.  The original XTDrone
+    // integration hard-coded z=1.0 here, which silently turned every
+    // horizontal EGO goal into a 1 m climb/descent.  That is especially
+    // dangerous when the vehicle has already taken off to another height.
+    Eigen::Vector3d end_wp(msg->pose.position.x,
+                           msg->pose.position.y,
+                           msg->pose.position.z);
+
+    // EGO's planner coordinates are normally the SWARM-LIO local world
+    // coordinates.  For the validated PX4-EKF integration, odom_world is
+    // remapped to MAVROS local_position/odom, so map/px4_local goals are
+    // already in exactly the planner frame.  Keep the old conversion only
+    // for legacy launches which still plan in the LIO frame.
+    const std::string frame = msg->header.frame_id;
+    const std::string lio_frame =
+        "quad" + std::to_string(planner_manager_->pp_.drone_id) + "/world";
+    const bool px4_local_goal = frame.empty() || frame == "map" ||
+                                frame == "px4" || frame == "px4_local";
+    if (px4_local_goal && !odom_is_px4_local_)
+    {
+      if (!have_px4_pose_)
+      {
+        ROS_WARN_THROTTLE(1.0, "Ignoring PX4-local EGO goal: MAVROS local pose is not ready");
+        return;
+      }
+
+      Eigen::Vector3d p_px4(end_wp);
+      Eigen::Vector3d p_px4_origin(px4_pose_.pose.position.x,
+                                   px4_pose_.pose.position.y,
+                                   px4_pose_.pose.position.z);
+      Eigen::Quaterniond q_px4(px4_pose_.pose.orientation.w,
+                               px4_pose_.pose.orientation.x,
+                               px4_pose_.pose.orientation.y,
+                               px4_pose_.pose.orientation.z);
+      q_px4.normalize();
+      Eigen::Vector3d p_body = q_px4.inverse() * (p_px4 - p_px4_origin);
+      end_wp = odom_pos_ + odom_orient_.normalized() * p_body;
+      ROS_INFO_THROTTLE(1.0,
+                        "Converted EGO goal frame '%s' from PX4 local to %s: (%.2f, %.2f, %.2f)",
+                        frame.empty() ? "(empty)" : frame.c_str(), lio_frame.c_str(),
+                        end_wp(0), end_wp(1), end_wp(2));
+    }
+    else if (!frame.empty() && !odom_is_px4_local_ && frame != lio_frame)
+    {
+      ROS_WARN_THROTTLE(1.0, "EGO goal frame '%s' is not %s; treating coordinates as LIO frame",
+                        frame.c_str(), lio_frame.c_str());
+    }
 
     // EGO reboundReplan rejects local targets closer than 0.2 m. Ignore such
     // hold waypoints before they can push the FSM into an endless REPLAN loop.
@@ -262,6 +321,12 @@ namespace ego_planner
     odom_orient_.z() = msg->pose.pose.orientation.z;
 
     have_odom_ = true;
+  }
+
+  void EGOReplanFSM::px4PoseCallback(const geometry_msgs::PoseStampedConstPtr &msg)
+  {
+    px4_pose_ = *msg;
+    have_px4_pose_ = true;
   }
 
   void EGOReplanFSM::BroadcastBsplineCallback(const traj_utils::BsplinePtr &msg)
