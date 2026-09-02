@@ -18,6 +18,9 @@
     <arg name="ego_boundary_z_max" default="3.0"/>
     <arg name="ego_boundary_spacing" default="0.3"/>
     <arg name="start_uav_rviz_state" default="true"/>
+    <!-- iris_1 is spawned in the south-east corner. Point its nose toward
+         the room center so the first Livox scans contain room structure. -->
+    <arg name="iris1_yaw" default="2.3561944902"/>
     <arg name="car0_x" default="2.3"/>
     <arg name="car0_y" default="2.4"/>
     <arg name="car0_yaw" default="-2.334"/>
@@ -32,7 +35,8 @@
     <arg name="car3_y" default="-6.5"/>
     <arg name="car3_yaw" default="3.14159"/>
     <arg name="car3_max_vel_trans" default="1.50"/>
-    <env name="GAZEBO_MODEL_PATH" value="$(find basic_room_sim)/models:$(optenv GAZEBO_MODEL_PATH)"/>
+    <env name="GAZEBO_MODEL_PATH" value="$(find basic_room_sim)/models:$(find mavlink_sitl_gazebo)/models:$(find livox_laser_simulation)/models:$(optenv GAZEBO_MODEL_PATH)"/>
+    <env name="GAZEBO_PLUGIN_PATH" value="$(find px4)/build/px4_sitl_default/build_gazebo:$(optenv GAZEBO_PLUGIN_PATH)"/>
     <!-- Gazebo sim -->
     <include if="$(arg start_gazebo)" file="$(find gazebo_ros)/launch/empty_world.launch">
         <arg name="gui" value="false"/>
@@ -130,7 +134,8 @@
             <arg name="P" value="0"/>
             <arg name="Y" value="0"/>
             <arg name="vehicle" value="iris"/>
-            <arg name="sdf" value="iris"/>
+            <arg name="px4_model" value="iris_vision"/>
+            <arg name="sdf" value="iris_mid360_0"/>
             <arg name="mavlink_udp_port" value="18570"/>
             <arg name="mavlink_tcp_port" value="4560"/>
             <arg name="spawn_delay" value="15"/>
@@ -158,9 +163,10 @@
             <arg name="z" value="0"/>
             <arg name="R" value="0"/>
             <arg name="P" value="0"/>
-            <arg name="Y" value="0"/>
+            <arg name="Y" value="$(arg iris1_yaw)"/>
             <arg name="vehicle" value="iris"/>
-            <arg name="sdf" value="iris"/>
+            <arg name="px4_model" value="iris_vision"/>
+            <arg name="sdf" value="iris_mid360_1"/>
             <arg name="mavlink_udp_port" value="18571"/>
             <arg name="mavlink_tcp_port" value="4561"/>
             <arg name="spawn_delay" value="19"/>
