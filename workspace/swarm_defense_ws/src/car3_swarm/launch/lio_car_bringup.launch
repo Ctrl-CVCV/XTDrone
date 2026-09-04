@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 单车 SWARM-LIO 车端 bringup: nesting_room 世界 + 一辆 car3(lidar:=mid360_lio,
+     平装 CustomMsg /car0/livox/lidar + /car0/imu)。
+     需先 source car3_lio/env.sh(GAZEBO_PLUGIN_PATH 保证 ws_livox 的 CustomMsg .so 生效)。 -->
+<launch>
+    <arg name="gui" default="true"/>
+    <arg name="paused" default="false"/>
+    <arg name="car" default="car0"/>
+    <!-- 不要从世界原点起步: camera_gimbal(带自己的 Mid360 传感器)位于房间中心原点,
+         会把 lidar 射线全挡在 ~0.5m 内(ICP 退化)。用与 multi_vehicle.launch 一致的
+         car0 起始位(2.3, 2.4) -> 后续 M3 与 UAV LIO 世界对齐也更省事。 -->
+    <arg name="x" default="2.3"/>
+    <arg name="y" default="2.4"/>
+    <arg name="yaw" default="-2.334"/>
+    <arg name="lidar" default="mid360_lio"/>
+
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name" value="$(find basic_room_sim)/worlds/nesting_room.world"/>
+        <arg name="gui" value="$(arg gui)"/>
+        <arg name="paused" value="$(arg paused)"/>
+        <arg name="use_sim_time" value="true"/>
+        <arg name="debug" value="false"/>
+        <arg name="headless" value="false"/>
+    </include>
+
+    <include file="$(find car3_swarm)/launch/car_spawn.launch">
+        <arg name="car" value="$(arg car)"/>
+        <arg name="x" value="$(arg x)"/>
+        <arg name="y" value="$(arg y)"/>
+        <arg name="yaw" value="$(arg yaw)"/>
+        <arg name="lidar" value="$(arg lidar)"/>
+    </include>
+</launch>

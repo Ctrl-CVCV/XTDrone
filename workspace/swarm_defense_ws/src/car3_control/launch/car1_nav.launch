@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <!-- car1 2D 导航栈: map_server + AMCL + move_base(全向 DWA)。
+         与 car0(car0_nav.launch, root 命名空间)可同场并存:
+         本栈整体放 group ns="car1",故 map/static_map 服务、move_base action
+         (/car1/move_base/goal、/car1/move_base_simple/goal)、cmd_vel、amcl_pose
+         全部落在 /car1/*,不与 car0 的 /move_base/*、/map 冲突。
+         地图复用与 car0 同一张房间静态图(car0_nav_map, gazebo 帧, 覆盖 [-8,8]m,
+         car1 出生 (-2.3,-2.4) 在其内); TF 帧为全局名 car1/map/car1/odom/car1/base_footprint。
+         用法: roslaunch car3_control car1_nav.launch   (在 car1 LIO/scan 已起的 rosmaster 上)
+         发目标: rostopic pub /car1/move_base_simple/goal geometry_msgs/PoseStamped "{header:{frame_id:\"car1/map\"}, pose:{...}}" -->
+    <arg name="map_file" default="$(find car3_control)/maps/car0_nav_map.yaml"/>
+    <arg name="init_x" default="-2.3"/>
+    <arg name="init_y" default="-2.4"/>
+    <arg name="init_a" default="0.808"/>
+
+    <group ns="car1">
+        <node name="map_server_car1" pkg="map_server" type="map_server"
+              args="$(arg map_file)">
+            <param name="frame_id" value="car1/map"/>
+        </node>
+
+        <node name="amcl_car1" pkg="amcl" type="amcl" output="screen">
+            <rosparam file="$(find car3_control)/params_car1/amcl_params.yaml" command="load"/>
+            <param name="initial_pose_x" value="$(arg init_x)"/>
+            <param name="initial_pose_y" value="$(arg init_y)"/>
+            <param name="initial_pose_a" value="$(arg init_a)"/>
+            <remap from="scan" to="/car1/scan"/>
+            <remap from="odom" to="/car1/odom"/>
+        </node>
+
+        <node name="move_base_car1" pkg="move_base" type="move_base" output="screen">
+            <rosparam file="$(find car3_control)/params_car1/costmap_common.yaml"
+                      command="load" ns="global_costmap"/>
+            <rosparam file="$(find car3_control)/params_car1/costmap_common.yaml"
+                      command="load" ns="local_costmap"/>
+            <rosparam file="$(find car3_control)/params_car1/global_costmap_params.yaml"
+                      command="load"/>
+            <rosparam file="$(find car3_control)/params_car1/local_costmap_params.yaml"
+                      command="load"/>
+            <rosparam file="$(find car3_control)/params_car1/dwa_local_planner_params.yaml"
+                      command="load"/>
+            <rosparam file="$(find car3_control)/params_car1/move_base_params.yaml"
+                      command="load"/>
+            <remap from="cmd_vel" to="/car1/cmd_vel"/>
+        </node>
+    </group>
+</launch>

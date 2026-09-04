@@ -1,0 +1,6 @@
+image: car0_nav_map.pgm
+resolution: 0.0500
+origin: [-8.0000, -8.0000, 0.0000]
+negate: 0
+occupied_thresh: 0.45
+free_thresh: 0.25

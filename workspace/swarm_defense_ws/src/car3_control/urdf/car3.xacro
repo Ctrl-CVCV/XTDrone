@@ -6,7 +6,15 @@
   <xacro:arg name="prefix" default=""/>
   <xacro:arg name="ns" default="/"/>
   <xacro:arg name="red_marker" default="false"/>
+  <!-- lidar: hokuyo(2D, 默认) / mid360(3D PointCloud2, 旧 mid360_car3 用) /
+       mid360_lio(3D CustomMsg 平装, 与 UAV 同款 liblivox_laser_simulation.so, 供 SWARM-LIO) -->
+  <xacro:arg name="lidar" default="hokuyo"/>
+  <xacro:arg name="livox_samples" default="24000"/>
+  <!-- mid360_lio 专用: lidar/imu 绝对话题名(不受 robotNamespace 影响), 默认单机用 /car0 -->
+  <xacro:arg name="lio_lidar_topic" default="/car0/livox/lidar"/>
   <xacro:property name="pfx" value="$(arg prefix)"/>
+  <xacro:property name="lidar_type" value="$(arg lidar)"/>
+  <xacro:property name="livox_samples_val" value="$(arg livox_samples)"/>
   <xacro:property name="robot_ns" value="$(arg ns)"/>
 
   <link name="${pfx}base_footprint">
@@ -210,6 +218,7 @@
     </actuator>
   </transmission>
 
+  <xacro:if value="${lidar_type == 'hokuyo'}">
   <link name="${pfx}laser_link">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -237,6 +246,38 @@
     <parent link="${pfx}base_link" />
     <child link="${pfx}laser_link" />
   </joint>
+  </xacro:if>
+
+  <!-- lidar=mid360/mid360_lio: 3D 雷达替换 2D hokuyo（外观 mesh + livox 点云），传感器原点即 livox_link。
+       livox_link 平装(rpy 0)于 base_link 上方 z=0.24, device z 轴竖直; 不斜装。 -->
+  <xacro:if value="${lidar_type == 'mid360' or lidar_type == 'mid360_lio'}">
+  <link name="${pfx}livox_link">
+    <inertial>
+      <mass value="0.265" />
+      <inertia ixx="0.00002" ixy="0" ixz="0" iyy="0.00002" iyz="0" izz="0.00001" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://livox_laser_simulation/meshes/mid360.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.2 0.2 0.2 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://livox_laser_simulation/meshes/mid360_rules.dae" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="livox_joint" type="fixed">
+    <origin xyz="0 0 0.24" rpy="0 0 0" />
+    <parent link="${pfx}base_link" />
+    <child link="${pfx}livox_link" />
+  </joint>
+  </xacro:if>
 
   <link name="${pfx}imu_link">
     <inertial>
@@ -347,6 +388,7 @@
     </plugin>
   </gazebo>
 
+  <xacro:if value="${lidar_type == 'hokuyo'}">
   <gazebo reference="${pfx}laser_link">
     <material>Gazebo/Black</material>
     <sensor type="ray" name="head_hokuyo_sensor">
@@ -379,6 +421,106 @@
       </plugin>
     </sensor>
   </gazebo>
+  </xacro:if>
+
+  <!-- lidar=mid360: livox 仿真插件 ray sensor，按 mid360.csv 逐点扫描发 PointCloud2 -->
+  <xacro:if value="${lidar_type == 'mid360'}">
+  <gazebo reference="${pfx}livox_link">
+    <material>Gazebo/Black</material>
+    <sensor type="ray" name="${pfx}livox_link">
+      <pose>0 0 0 0 0 0</pose>
+      <visualize>false</visualize>
+      <update_rate>10</update_rate>
+      <always_on>true</always_on>
+      <plugin name="gazebo_ros_livox_controller" filename="liblivox_laser_simulation.so">
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>100</samples>
+              <resolution>1</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>6.28319</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>360</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.0562</min_angle>
+              <max_angle>0.9812</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.1</min>
+            <max>30</max>
+            <resolution>0.02</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.0</stddev>
+          </noise>
+        </ray>
+        <visualize>false</visualize>
+        <samples>${livox_samples_val}</samples>
+        <downsample>1</downsample>
+        <csv_file_name>package://livox_laser_simulation/scan_mode/mid360.csv</csv_file_name>
+        <ros_topic>scan</ros_topic>
+      </plugin>
+    </sensor>
+  </gazebo>
+  </xacro:if>
+
+  <!-- lidar=mid360_lio: SWARM-LIO 专用。与 UAV 的 iris_mid360_N 完全同款的 CustomMsg 插件
+       (liblivox_laser_simulation.so + publish_pointcloud_type=3 = livox_ros_driver2/CustomMsg)。
+       livox_link 与 mid360 分支共用(平装 rpy 0)。csv 由插件经 model://Mid360/scan_mode/ 解析,
+       故 GAZEBO_MODEL_PATH 需含 livox 包 models。话题用 lio_lidar_topic 绝对名。 -->
+  <xacro:if value="${lidar_type == 'mid360_lio'}">
+  <gazebo reference="${pfx}livox_link">
+    <material>Gazebo/Black</material>
+    <sensor type="ray" name="${pfx}livox_lio_sensor">
+      <pose>0 0 0 0 0 0</pose>
+      <visualize>false</visualize>
+      <always_on>true</always_on>
+      <update_rate>10</update_rate>
+      <plugin name="${pfx}gazebo_livox_lio_controller" filename="liblivox_laser_simulation.so">
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>100</samples>
+              <resolution>1</resolution>
+              <min_angle>-1.57</min_angle>
+              <max_angle>1.57</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>360</samples>
+              <resolution>1</resolution>
+              <min_angle>-1.57</min_angle>
+              <max_angle>1.57</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.1</min>
+            <max>45</max>
+            <resolution>0.02</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.0</stddev>
+          </noise>
+        </ray>
+        <publish_scan_visualization>false</publish_scan_visualization>
+        <samples>18000</samples>
+        <downsample>2</downsample>
+        <csv_file_name>mid360-real-centr.csv</csv_file_name>
+        <publish_pointcloud_type>3</publish_pointcloud_type>
+        <ros_topic>$(arg lio_lidar_topic)</ros_topic>
+        <frameName>${pfx}livox_link</frameName>
+        <enable_self_filter>false</enable_self_filter>
+        <debug>false</debug>
+      </plugin>
+    </sensor>
+  </gazebo>
+  </xacro:if>
 
   <gazebo reference="${pfx}imu_link">
     <material>Gazebo/Orange</material>
@@ -389,6 +531,7 @@
       <visualize>true</visualize>
       <topic>__default_topic__</topic>
       <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
+        <robotNamespace>${robot_ns}</robotNamespace>
         <topicName>imu</topicName>
         <bodyName>${pfx}imu_link</bodyName>
         <updateRateHZ>100.0</updateRateHZ>

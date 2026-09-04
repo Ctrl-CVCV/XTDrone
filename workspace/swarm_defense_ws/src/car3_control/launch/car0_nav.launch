@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <!-- M5: car0 2D 导航演示(在当前双车 LIO 场景上原位叠加)。
+         LIO 车已由 car3_swarm 场景拉起(提供 /car0/lidar_slam/odom + /car0/scan + TF)。
+         这里只加: map_server(gazebo 帧墙图) + AMCL + move_base(全向 DWA)。
+         帧: 导航用 car0/map(≈gazebo 帧) <- AMCL(map->odom) <- car0/odom(gazebo 真值
+         已有 TF) -> car0/base_footprint; 激光 /car0/scan(car0/livox_link)。
+         用法(单独在已跑 car0 LIO/scan 的 rosmaster 上):
+           roslaunch car3_control car0_nav.launch
+        后按 Ctrl-C; 发目标: rostopic pub /move_base_simple/goal ... 或 RViz 2D Nav Goal -->
+    <arg name="map_file" default="$(find car3_control)/maps/car0_nav_map.yaml"/>
+    <arg name="init_x" default="0.85"/>
+    <arg name="init_y" default="1.78"/>
+    <arg name="init_a" default="1.66"/>
+
+    <node name="map_server_car0" pkg="map_server" type="map_server"
+          args="$(arg map_file)">
+        <param name="frame_id" value="car0/map"/>
+    </node>
+
+    <node name="amcl_car0" pkg="amcl" type="amcl" output="screen">
+        <rosparam file="$(find car3_control)/params_car0/amcl_params.yaml" command="load"/>
+        <param name="initial_pose_x" value="$(arg init_x)"/>
+        <param name="initial_pose_y" value="$(arg init_y)"/>
+        <param name="initial_pose_a" value="$(arg init_a)"/>
+        <remap from="scan" to="/car0/scan"/>
+        <remap from="odom" to="/car0/odom"/>
+    </node>
+
+    <node name="move_base_car0" pkg="move_base" type="move_base" output="screen">
+        <rosparam file="$(find car3_control)/params_car0/costmap_common.yaml"
+                  command="load" ns="global_costmap"/>
+        <rosparam file="$(find car3_control)/params_car0/costmap_common.yaml"
+                  command="load" ns="local_costmap"/>
+        <rosparam file="$(find car3_control)/params_car0/global_costmap_params.yaml"
+                  command="load"/>
+        <rosparam file="$(find car3_control)/params_car0/local_costmap_params.yaml"
+                  command="load"/>
+        <rosparam file="$(find car3_control)/params_car0/dwa_local_planner_params.yaml"
+                  command="load"/>
+        <rosparam file="$(find car3_control)/params_car0/move_base_params.yaml"
+                  command="load"/>
+        <remap from="cmd_vel" to="/car0/cmd_vel"/>
+    </node>
+</launch>

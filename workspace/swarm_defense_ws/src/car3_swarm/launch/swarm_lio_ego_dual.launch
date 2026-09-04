@@ -1,0 +1,240 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    SWARM-LIO -> EGO-Swarm dual-UAV integration.
+    Inputs:
+      PX4 EKF2 local odom for planner state and ray origin
+      SWARM-LIO cloud transformed once into the PX4 local map frame
+    This file starts planners only. It does not start Gazebo/PX4 and does not
+    arm vehicles. EGO output is exposed on the normal XTDrone command paths.
+  -->
+  <arg name="map_size_x" default="30.0"/>
+  <arg name="map_size_y" default="30.0"/>
+  <arg name="map_size_z" default="6.0"/>
+  <arg name="target0_x" default="-1.0"/>
+  <arg name="target0_y" default="-1.0"/>
+  <arg name="target0_z" default="1.0"/>
+  <arg name="target1_x" default="1.0"/>
+  <arg name="target1_y" default="1.0"/>
+  <arg name="target1_z" default="1.0"/>
+  <!-- With resolution=0.10 m the grid implementation rounds this radius
+       upward to one voxel. Expose it so the integration test can compare
+       the default margin with a more conservative value. -->
+  <arg name="obstacles_inflation" default="0.05"/>
+  <arg name="swarm_clearance" default="0.5"/>
+
+  <!-- Planner 0 -->
+  <node pkg="ego_planner" type="ego_planner_node" name="iris_0_ego_planner_node" output="screen">
+    <!-- Planner state and ray origin: PX4 EKF2 fused local ENU odometry. -->
+    <remap from="~odom_world" to="/iris_0/mavros/local_position/odom"/>
+    <remap from="~grid_map/odom" to="/iris_0/mavros/local_position/odom"/>
+    <remap from="~grid_map/cloud" to="/iris_0/cloud_registered_ekf"/>
+    <remap from="~planning/bspline" to="/xtdrone/iris_0/planning/bspline"/>
+    <remap from="~planning/data_display" to="/xtdrone/iris_0/planning/data_display"/>
+    <remap from="~planning/broadcast_bspline_from_planner" to="/broadcast_bspline"/>
+    <remap from="~planning/broadcast_bspline_to_planner" to="/broadcast_bspline"/>
+    <remap from="/move_base_simple/goal" to="/iris_0/move_base_simple/goal"/>
+
+    <param name="fsm/flight_type" value="1" type="int"/>
+    <param name="fsm/thresh_replan_time" value="1.0"/>
+    <param name="fsm/thresh_no_replan_meter" value="1.0"/>
+    <param name="fsm/planning_horizon" value="7.5"/>
+    <param name="fsm/planning_horizen_time" value="3.0"/>
+    <param name="fsm/emergency_time" value="1.0"/>
+    <param name="fsm/realworld_experiment" value="false"/>
+    <param name="fsm/fail_safe" value="true"/>
+    <param name="fsm/waypoint_num" value="0" type="int"/>
+    <param name="fsm/odom_is_px4_local" value="true" type="bool"/>
+
+    <param name="grid_map/resolution" value="0.10"/>
+    <param name="grid_map/map_size_x" value="$(arg map_size_x)"/>
+    <param name="grid_map/map_size_y" value="$(arg map_size_y)"/>
+    <param name="grid_map/map_size_z" value="$(arg map_size_z)"/>
+    <param name="grid_map/local_update_range_x" value="5.5"/>
+    <param name="grid_map/local_update_range_y" value="5.5"/>
+    <param name="grid_map/local_update_range_z" value="4.5"/>
+    <!-- Mid360's registered cloud contains a thin ground layer. -->
+    <param name="grid_map/obstacles_inflation" value="$(arg obstacles_inflation)"/>
+    <param name="grid_map/use_depth_filter" value="false"/>
+    <param name="grid_map/filter_ground_points" value="true"/>
+    <param name="grid_map/ground_filter_max_z" value="0.45"/>
+    <param name="grid_map/min_ray_length" value="0.10"/>
+    <param name="grid_map/max_ray_length" value="4.5"/>
+    <param name="grid_map/p_hit" value="0.65"/>
+    <param name="grid_map/p_miss" value="0.35"/>
+    <param name="grid_map/p_min" value="0.12"/>
+    <param name="grid_map/p_max" value="0.90"/>
+    <param name="grid_map/p_occ" value="0.80"/>
+    <param name="grid_map/virtual_ceil_height" value="2.3"/>
+    <param name="grid_map/visualization_truncate_height" value="2.2"/>
+    <param name="grid_map/show_occ_time" value="false"/>
+    <param name="grid_map/pose_type" value="2" type="int"/>
+    <!-- cloud_registered is numerically aligned to this local frame by the
+         SWARM-LIO simulation alignment; frame_id labels the EGO map output. -->
+    <param name="grid_map/frame_id" value="map"/>
+    <param name="grid_map/local_map_margin" value="10" type="int"/>
+    <param name="grid_map/ground_height" value="-1.0"/>
+    <param name="grid_map/odom_depth_timeout" value="1.0"/>
+
+    <!-- Conservative first-flight limits.  The PX4 position loop must spend
+         part of its available thrust on tilt during horizontal motion; the
+         original 1/2/4 m/s limits made a small goal produce a sharp tilt and
+         the vehicle lost altitude before the next position update. -->
+    <param name="manager/max_vel" value="0.25"/>
+    <param name="manager/max_acc" value="0.5"/>
+    <param name="manager/max_jerk" value="1.0"/>
+    <param name="manager/control_points_distance" value="0.4"/>
+    <param name="manager/feasibility_tolerance" value="0.05"/>
+    <param name="manager/planning_horizon" value="7.5"/>
+    <param name="manager/use_distinctive_trajs" value="true"/>
+    <param name="manager/drone_id" value="0" type="int"/>
+    <param name="optimization/lambda_smooth" value="1.0"/>
+    <param name="optimization/lambda_collision" value="0.5"/>
+    <param name="optimization/lambda_feasibility" value="0.1"/>
+    <param name="optimization/lambda_fitness" value="1.0"/>
+    <param name="optimization/dist0" value="0.5"/>
+    <param name="optimization/swarm_clearance" value="$(arg swarm_clearance)"/>
+    <param name="optimization/max_vel" value="0.25"/>
+    <param name="optimization/max_acc" value="0.5"/>
+    <param name="bspline/limit_vel" value="0.25"/>
+    <param name="bspline/limit_acc" value="0.5"/>
+    <param name="bspline/limit_ratio" value="1.1"/>
+    <param name="prediction/obj_num" value="2" type="int"/>
+  </node>
+
+  <!-- Planner 1 -->
+  <node pkg="ego_planner" type="ego_planner_node" name="iris_1_ego_planner_node" output="screen">
+    <remap from="~odom_world" to="/iris_1/mavros/local_position/odom"/>
+    <remap from="~grid_map/odom" to="/iris_1/mavros/local_position/odom"/>
+    <remap from="~grid_map/cloud" to="/iris_1/cloud_registered_ekf"/>
+    <remap from="~planning/bspline" to="/xtdrone/iris_1/planning/bspline"/>
+    <remap from="~planning/data_display" to="/xtdrone/iris_1/planning/data_display"/>
+    <remap from="~planning/broadcast_bspline_from_planner" to="/broadcast_bspline"/>
+    <remap from="~planning/broadcast_bspline_to_planner" to="/broadcast_bspline"/>
+    <remap from="/move_base_simple/goal" to="/iris_1/move_base_simple/goal"/>
+
+    <param name="fsm/flight_type" value="1" type="int"/>
+    <param name="fsm/thresh_replan_time" value="1.0"/>
+    <param name="fsm/thresh_no_replan_meter" value="1.0"/>
+    <param name="fsm/planning_horizon" value="7.5"/>
+    <param name="fsm/planning_horizen_time" value="3.0"/>
+    <param name="fsm/emergency_time" value="1.0"/>
+    <param name="fsm/realworld_experiment" value="false"/>
+    <param name="fsm/fail_safe" value="true"/>
+    <param name="fsm/waypoint_num" value="0" type="int"/>
+    <param name="fsm/odom_is_px4_local" value="true" type="bool"/>
+
+    <param name="grid_map/resolution" value="0.10"/>
+    <param name="grid_map/map_size_x" value="$(arg map_size_x)"/>
+    <param name="grid_map/map_size_y" value="$(arg map_size_y)"/>
+    <param name="grid_map/map_size_z" value="$(arg map_size_z)"/>
+    <param name="grid_map/local_update_range_x" value="5.5"/>
+    <param name="grid_map/local_update_range_y" value="5.5"/>
+    <param name="grid_map/local_update_range_z" value="4.5"/>
+    <param name="grid_map/obstacles_inflation" value="$(arg obstacles_inflation)"/>
+    <param name="grid_map/use_depth_filter" value="false"/>
+    <param name="grid_map/filter_ground_points" value="true"/>
+    <param name="grid_map/ground_filter_max_z" value="0.45"/>
+    <param name="grid_map/min_ray_length" value="0.10"/>
+    <param name="grid_map/max_ray_length" value="4.5"/>
+    <param name="grid_map/p_hit" value="0.65"/>
+    <param name="grid_map/p_miss" value="0.35"/>
+    <param name="grid_map/p_min" value="0.12"/>
+    <param name="grid_map/p_max" value="0.90"/>
+    <param name="grid_map/p_occ" value="0.80"/>
+    <param name="grid_map/virtual_ceil_height" value="2.3"/>
+    <param name="grid_map/visualization_truncate_height" value="2.2"/>
+    <param name="grid_map/show_occ_time" value="false"/>
+    <param name="grid_map/pose_type" value="2" type="int"/>
+    <param name="grid_map/frame_id" value="map"/>
+    <param name="grid_map/local_map_margin" value="10" type="int"/>
+    <param name="grid_map/ground_height" value="-1.0"/>
+    <param name="grid_map/odom_depth_timeout" value="1.0"/>
+
+    <param name="manager/max_vel" value="0.25"/>
+    <param name="manager/max_acc" value="0.5"/>
+    <param name="manager/max_jerk" value="1.0"/>
+    <param name="manager/control_points_distance" value="0.4"/>
+    <param name="manager/feasibility_tolerance" value="0.05"/>
+    <param name="manager/planning_horizon" value="7.5"/>
+    <param name="manager/use_distinctive_trajs" value="true"/>
+    <param name="manager/drone_id" value="1" type="int"/>
+    <param name="optimization/lambda_smooth" value="1.0"/>
+    <param name="optimization/lambda_collision" value="0.5"/>
+    <param name="optimization/lambda_feasibility" value="0.1"/>
+    <param name="optimization/lambda_fitness" value="1.0"/>
+    <param name="optimization/dist0" value="0.5"/>
+    <param name="optimization/swarm_clearance" value="$(arg swarm_clearance)"/>
+    <param name="optimization/max_vel" value="0.25"/>
+    <param name="optimization/max_acc" value="0.5"/>
+    <param name="bspline/limit_vel" value="0.25"/>
+    <param name="bspline/limit_acc" value="0.5"/>
+    <param name="bspline/limit_ratio" value="1.1"/>
+    <param name="prediction/obj_num" value="2" type="int"/>
+  </node>
+
+  <!--
+    Trajectory servers output SWARM-LIO-frame commands first.  The adapter
+    below converts those relative commands into the PX4 local ENU frame.
+    This is important because LIO and PX4 local origins (especially z) can
+    differ during a long simulation.
+  -->
+  <node pkg="ego_planner" type="traj_server" name="iris_0_traj_server" output="screen">
+    <remap from="~planning/bspline" to="/xtdrone/iris_0/planning/bspline"/>
+    <remap from="position_cmd" to="/xtdrone/iris_0/planning/pos_cmd"/>
+    <remap from="pose_cmd" to="/xtdrone/iris_0/cmd_pose_lio"/>
+    <remap from="/position_cmd" to="/xtdrone/iris_0/planning/pos_cmd"/>
+    <remap from="/pose_cmd" to="/xtdrone/iris_0/cmd_pose_lio"/>
+    <param name="traj_server/time_forward" value="1.0"/>
+  </node>
+  <node pkg="ego_planner" type="traj_server" name="iris_1_traj_server" output="screen">
+    <remap from="~planning/bspline" to="/xtdrone/iris_1/planning/bspline"/>
+    <remap from="position_cmd" to="/xtdrone/iris_1/planning/pos_cmd"/>
+    <remap from="pose_cmd" to="/xtdrone/iris_1/cmd_pose_lio"/>
+    <remap from="/position_cmd" to="/xtdrone/iris_1/planning/pos_cmd"/>
+    <remap from="/pose_cmd" to="/xtdrone/iris_1/cmd_pose_lio"/>
+    <param name="traj_server/time_forward" value="1.0"/>
+  </node>
+
+  <node pkg="car3_swarm" type="ego_lio_to_px4_bridge.py" name="iris_0_ego_lio_to_px4" output="screen">
+    <param name="vehicle" value="iris_0"/>
+    <param name="hold_z" value="true"/>
+    <param name="hold_z_min" value="0.5"/>
+    <param name="hold_yaw" value="true"/>
+    <param name="max_lio_tilt_deg" value="35.0"/>
+    <param name="max_lio_step" value="0.80"/>
+    <param name="max_lio_speed" value="5.0"/>
+    <param name="wait_for_takeoff_signal" value="true"/>
+    <param name="command_frame" value="px4_local"/>
+  </node>
+  <node pkg="car3_swarm" type="ego_lio_to_px4_bridge.py" name="iris_1_ego_lio_to_px4" output="screen">
+    <param name="vehicle" value="iris_1"/>
+    <param name="hold_z" value="true"/>
+    <param name="hold_z_min" value="0.5"/>
+    <param name="hold_yaw" value="true"/>
+    <param name="max_lio_tilt_deg" value="35.0"/>
+    <param name="max_lio_step" value="0.80"/>
+    <param name="max_lio_speed" value="5.0"/>
+    <param name="wait_for_takeoff_signal" value="true"/>
+    <param name="command_frame" value="px4_local"/>
+  </node>
+
+  <!-- Convert each registered SWARM-LIO cloud into the same PX4 EKF local
+       frame used by the planner state and GridMap ray origin. -->
+  <node pkg="car3_swarm" type="lio_cloud_to_px4" name="iris_0_lio_cloud_to_px4" output="screen">
+    <param name="cloud_in" value="/quad0/cloud_registered"/>
+    <param name="lio_odom" value="/quad0/lidar_slam/odom"/>
+    <param name="px4_odom" value="/iris_0/mavros/local_position/odom"/>
+    <param name="cloud_out" value="/iris_0/cloud_registered_ekf"/>
+    <param name="output_frame" value="map"/>
+    <param name="calibration_samples" value="30"/>
+  </node>
+  <node pkg="car3_swarm" type="lio_cloud_to_px4" name="iris_1_lio_cloud_to_px4" output="screen">
+    <param name="cloud_in" value="/quad1/cloud_registered"/>
+    <param name="lio_odom" value="/quad1/lidar_slam/odom"/>
+    <param name="px4_odom" value="/iris_1/mavros/local_position/odom"/>
+    <param name="cloud_out" value="/iris_1/cloud_registered_ekf"/>
+    <param name="output_frame" value="map"/>
+    <param name="calibration_samples" value="30"/>
+  </node>
+</launch>

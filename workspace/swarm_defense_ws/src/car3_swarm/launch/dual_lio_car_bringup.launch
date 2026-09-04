@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- M3 多 agent 世界对齐验证用车端: nesting_room 世界 + car0/car1 两辆
+     mid360_lio(CustomMsg) 车。car0 起在 proven 位(2.3,2.4), car1 起在
+     (-2.3,-2.4), 均避开房间中心 camera_gimbal。 -->
+<launch>
+    <arg name="gui" default="true"/>
+    <arg name="paused" default="false"/>
+    <arg name="car0_x" default="2.3"/>
+    <arg name="car0_y" default="2.4"/>
+    <arg name="car0_yaw" default="-2.334"/>
+    <arg name="car1_x" default="-2.3"/>
+    <arg name="car1_y" default="-2.4"/>
+    <arg name="car1_yaw" default="0.808"/>
+    <arg name="lidar" default="mid360_lio"/>
+
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name" value="$(find basic_room_sim)/worlds/nesting_room.world"/>
+        <arg name="gui" value="$(arg gui)"/>
+        <arg name="paused" value="$(arg paused)"/>
+        <arg name="use_sim_time" value="true"/>
+        <arg name="debug" value="false"/>
+        <arg name="headless" value="false"/>
+    </include>
+
+    <include file="$(find car3_swarm)/launch/car_spawn.launch">
+        <arg name="car" value="car0"/>
+        <arg name="x" value="$(arg car0_x)"/>
+        <arg name="y" value="$(arg car0_y)"/>
+        <arg name="yaw" value="$(arg car0_yaw)"/>
+        <arg name="lidar" value="$(arg lidar)"/>
+    </include>
+    <include file="$(find car3_swarm)/launch/car_spawn.launch">
+        <arg name="car" value="car1"/>
+        <arg name="x" value="$(arg car1_x)"/>
+        <arg name="y" value="$(arg car1_y)"/>
+        <arg name="yaw" value="$(arg car1_yaw)"/>
+        <arg name="lidar" value="$(arg lidar)"/>
+    </include>
+</launch>
